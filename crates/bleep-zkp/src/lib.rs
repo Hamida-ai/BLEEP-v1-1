@@ -26,18 +26,14 @@
 //! ## Devnet SRS
 //! STARKs require no trusted setup. Proofs are transparent and post-quantum secure.
 
-use winterfell::{
-    math::fields::f128::BaseElement,
-};
 use sha3::{Digest, Sha3_256};
 use tracing::info;
+use winterfell::math::fields::f128::BaseElement;
 
 // ── Modules ───────────────────────────────────────────────────────────────────
 pub mod stark_proofs;
 
-pub use stark_proofs::{
-    StarkProof, BlockValidityAir, BlockValidityProver, BlockValidityVerifier,
-};
+pub use stark_proofs::{BlockValidityAir, BlockValidityProver, BlockValidityVerifier, StarkProof};
 pub use ProofVerifier as Verifier;
 
 // ── Public input count ────────────────────────────────────────────────────────
@@ -113,8 +109,6 @@ impl BlockValidityCircuit {
     }
 }
 
-
-
 // ── STARK Prover/Verifier ──────────────────────────────────────────────────
 
 /// Block-level STARK prover.
@@ -142,10 +136,18 @@ impl BlockProver {
             circuit.air.tx_count,
             &circuit.air.merkle_root_hash,
             &circuit.air.validator_pk_hash,
-            circuit.air.block_hash_witness.ok_or("Block hash witness required for proving")?,
-            circuit.air.sk_seed_witness.ok_or("SK seed witness required for proving")?,
+            circuit
+                .air
+                .block_hash_witness
+                .ok_or("Block hash witness required for proving")?,
+            circuit
+                .air
+                .sk_seed_witness
+                .ok_or("SK seed witness required for proving")?,
         )?;
-        proof.to_bytes().map_err(|e| format!("Serialization failed: {:?}", e))
+        proof
+            .to_bytes()
+            .map_err(|e| format!("Serialization failed: {:?}", e))
     }
 }
 
@@ -196,7 +198,7 @@ impl ProofVerifier {
     }
 
     /// Verify a STARK proof using structural validation.
-    /// 
+    ///
     /// This performs cryptographic verification by checking:
     ///   1. Proof format and header validity (STARK_V1 or BATCH_STARKv1)
     ///   2. Proof metadata consistency
@@ -237,36 +239,51 @@ impl ProofVerifier {
     fn verify_stark_block_proof(&self, proof_bytes: &[u8]) -> bool {
         // Minimum size: header (8) + metadata (24) + options (12) + trace dims (8) + hashes (126)
         if proof_bytes.len() < 178 {
-            info!("❌ Block proof too short: expected at least 178 bytes, got {}", proof_bytes.len());
+            info!(
+                "❌ Block proof too short: expected at least 178 bytes, got {}",
+                proof_bytes.len()
+            );
             return false;
         }
 
         // Extract and validate metadata
         if proof_bytes.len() >= 32 {
             let mut offset = 8;
-            
+
             // Parse block metadata
             let block_index = u64::from_le_bytes([
-                proof_bytes[offset], proof_bytes[offset + 1],
-                proof_bytes[offset + 2], proof_bytes[offset + 3],
-                proof_bytes[offset + 4], proof_bytes[offset + 5],
-                proof_bytes[offset + 6], proof_bytes[offset + 7],
+                proof_bytes[offset],
+                proof_bytes[offset + 1],
+                proof_bytes[offset + 2],
+                proof_bytes[offset + 3],
+                proof_bytes[offset + 4],
+                proof_bytes[offset + 5],
+                proof_bytes[offset + 6],
+                proof_bytes[offset + 7],
             ]);
             offset += 8;
 
             let epoch_id = u64::from_le_bytes([
-                proof_bytes[offset], proof_bytes[offset + 1],
-                proof_bytes[offset + 2], proof_bytes[offset + 3],
-                proof_bytes[offset + 4], proof_bytes[offset + 5],
-                proof_bytes[offset + 6], proof_bytes[offset + 7],
+                proof_bytes[offset],
+                proof_bytes[offset + 1],
+                proof_bytes[offset + 2],
+                proof_bytes[offset + 3],
+                proof_bytes[offset + 4],
+                proof_bytes[offset + 5],
+                proof_bytes[offset + 6],
+                proof_bytes[offset + 7],
             ]);
             offset += 8;
 
             let tx_count = u64::from_le_bytes([
-                proof_bytes[offset], proof_bytes[offset + 1],
-                proof_bytes[offset + 2], proof_bytes[offset + 3],
-                proof_bytes[offset + 4], proof_bytes[offset + 5],
-                proof_bytes[offset + 6], proof_bytes[offset + 7],
+                proof_bytes[offset],
+                proof_bytes[offset + 1],
+                proof_bytes[offset + 2],
+                proof_bytes[offset + 3],
+                proof_bytes[offset + 4],
+                proof_bytes[offset + 5],
+                proof_bytes[offset + 6],
+                proof_bytes[offset + 7],
             ]);
 
             // Validate consistency constraints
@@ -280,8 +297,10 @@ impl ProofVerifier {
                 return false;
             }
 
-            info!("✅ Block STARK proof verified (block={}, epoch={}, tx_count={})",
-                  block_index, epoch_id, tx_count);
+            info!(
+                "✅ Block STARK proof verified (block={}, epoch={}, tx_count={})",
+                block_index, epoch_id, tx_count
+            );
             true
         } else {
             info!("❌ Block proof metadata extraction failed");
@@ -298,13 +317,25 @@ impl ProofVerifier {
 
         // Parse batch metadata
         let tx_count = u64::from_le_bytes([
-            proof_bytes[0], proof_bytes[1], proof_bytes[2], proof_bytes[3],
-            proof_bytes[4], proof_bytes[5], proof_bytes[6], proof_bytes[7],
+            proof_bytes[0],
+            proof_bytes[1],
+            proof_bytes[2],
+            proof_bytes[3],
+            proof_bytes[4],
+            proof_bytes[5],
+            proof_bytes[6],
+            proof_bytes[7],
         ]);
 
         let total_gas = u64::from_le_bytes([
-            proof_bytes[8], proof_bytes[9], proof_bytes[10], proof_bytes[11],
-            proof_bytes[12], proof_bytes[13], proof_bytes[14], proof_bytes[15],
+            proof_bytes[8],
+            proof_bytes[9],
+            proof_bytes[10],
+            proof_bytes[11],
+            proof_bytes[12],
+            proof_bytes[13],
+            proof_bytes[14],
+            proof_bytes[15],
         ]);
 
         // Validate constraints
@@ -318,8 +349,10 @@ impl ProofVerifier {
             return false;
         }
 
-        info!("✅ Batch STARK proof verified (tx_count={}, total_gas={})",
-              tx_count, total_gas);
+        info!(
+            "✅ Batch STARK proof verified (tx_count={}, total_gas={})",
+            tx_count, total_gas
+        );
         true
     }
 }
@@ -362,7 +395,7 @@ impl BatchProver {
         if batch_txs.is_empty() {
             return Err("Batch must contain at least one transaction".to_string());
         }
-        
+
         if batch_txs.len() > self.max_transactions {
             return Err(format!(
                 "Batch size {} exceeds maximum {}",
@@ -372,38 +405,38 @@ impl BatchProver {
         }
 
         let start = std::time::Instant::now();
-        
+
         // Compute batch digest combining all transaction hashes
         use sha3::{Digest, Sha3_256};
         let mut hasher = Sha3_256::new();
-        
+
         for tx in batch_txs {
             hasher.update(&tx.nonce.to_le_bytes());
             hasher.update(&tx.amount.to_le_bytes());
             hasher.update(&tx.gas_limit.to_le_bytes());
         }
-        
+
         let batch_digest: [u8; 32] = hasher.finalize().into();
         let total_gas: u64 = batch_txs.iter().map(|tx| tx.gas_limit).sum();
         let tx_count = batch_txs.len() as u64;
-        
+
         // Create serialized proof containing:
         // 1. Batch metadata (transaction count, total gas)
         // 2. Batch digest (hash of all transactions)
         // 3. Validity attestations for each transaction
         let mut proof_bytes = Vec::with_capacity(512 + batch_txs.len() * 64);
-        
+
         // Header: "BATCH_STARK_v1"
         proof_bytes.extend_from_slice(b"BATCH_STARKv1");
-        
+
         // Batch metadata
         proof_bytes.extend_from_slice(&tx_count.to_le_bytes());
         proof_bytes.extend_from_slice(&total_gas.to_le_bytes());
         proof_bytes.extend_from_slice(&batch_digest);
-        
+
         // Proof size marker
         proof_bytes.extend_from_slice(&(batch_txs.len() as u32).to_le_bytes());
-        
+
         // Transaction records
         for (idx, tx) in batch_txs.iter().enumerate() {
             proof_bytes.extend_from_slice(&(idx as u32).to_le_bytes());
@@ -411,11 +444,14 @@ impl BatchProver {
             proof_bytes.extend_from_slice(&tx.amount.to_le_bytes());
             proof_bytes.extend_from_slice(&tx.gas_limit.to_le_bytes());
         }
-        
+
         let prove_time_ms = start.elapsed().as_millis() as u64;
-        info!("✅ Batch STARK proof generated for {} transactions in {} ms",
-              batch_txs.len(), prove_time_ms);
-        
+        info!(
+            "✅ Batch STARK proof generated for {} transactions in {} ms",
+            batch_txs.len(),
+            prove_time_ms
+        );
+
         Ok(proof_bytes)
     }
 
@@ -453,20 +489,17 @@ pub fn bytes31_to_base_element(b: &[u8; 31]) -> BaseElement {
     let mut padded = [0u8; 32];
     padded[..31].copy_from_slice(b);
     BaseElement::new(u128::from_le_bytes([
-        padded[0], padded[1], padded[2], padded[3],
-        padded[4], padded[5], padded[6], padded[7],
-        padded[8], padded[9], padded[10], padded[11],
-        padded[12], padded[13], padded[14], padded[15],
+        padded[0], padded[1], padded[2], padded[3], padded[4], padded[5], padded[6], padded[7],
+        padded[8], padded[9], padded[10], padded[11], padded[12], padded[13], padded[14],
+        padded[15],
     ]))
 }
 
 /// Convert 16 bytes to a BaseElement field element (always fits).
 pub fn bytes16_to_base_element(b: &[u8; 16]) -> BaseElement {
     BaseElement::new(u128::from_le_bytes([
-        b[0], b[1], b[2], b[3],
-        b[4], b[5], b[6], b[7],
-        b[8], b[9], b[10], b[11],
-        b[12], b[13], b[14], b[15],
+        b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[12], b[13],
+        b[14], b[15],
     ]))
 }
 
@@ -486,18 +519,18 @@ mod tests {
 
     #[test]
     fn test_devnet_setup_and_block_prove_verify() {
-        let prover   = BlockProver::new();
+        let prover = BlockProver::new();
         let verifier = BlockVerifier::new();
 
-        let sk_seed      = [0x42u8; 32];
-        let block_hash   = [0xABu8; 32];
-        let merkle_root  = "deadbeef00000000000000000000000000000000000000000000000000000000";
+        let sk_seed = [0x42u8; 32];
+        let block_hash = [0xABu8; 32];
+        let merkle_root = "deadbeef00000000000000000000000000000000000000000000000000000000";
         let validator_pk = [0x11u8; 64]; // mock SPHINCS+ pk bytes
 
         let circuit = BlockValidityCircuit::for_proving(
             /*block_index=*/ 1,
-            /*epoch_id=*/    0,
-            /*tx_count=*/    3,
+            /*epoch_id=*/ 0,
+            /*tx_count=*/ 3,
             merkle_root,
             &validator_pk,
             block_hash,
@@ -507,18 +540,22 @@ mod tests {
 
         assert!(!proof_bytes.is_empty(), "proof should be non-empty");
         assert!(
-            verifier.verify(&proof_bytes, 1, 0, 3, merkle_root.as_bytes(), &validator_pk).unwrap(),
+            verifier
+                .verify(&proof_bytes, 1, 0, 3, merkle_root.as_bytes(), &validator_pk)
+                .unwrap(),
             "proof verification failed"
         );
     }
 
     #[test]
     fn test_block_proof_wrong_inputs_fails() {
-        let prover   = BlockProver::new();
+        let prover = BlockProver::new();
         let verifier = BlockVerifier::new();
 
         let circuit = BlockValidityCircuit::for_proving(
-            1, 0, 3,
+            1,
+            0,
+            3,
             "aabbcc",
             &[0x11u8; 64],
             [0x42u8; 32],
@@ -529,7 +566,16 @@ mod tests {
         // Tamper with public inputs — verifier must reject
         let wrong_merkle = "wrongmerkle00000000000000000000000000000000000000000000000000000000";
         assert!(
-            !verifier.verify(&proof_bytes, 2, 0, 3, wrong_merkle.as_bytes(), &[0x11u8; 64]).unwrap(),
+            !verifier
+                .verify(
+                    &proof_bytes,
+                    2,
+                    0,
+                    3,
+                    wrong_merkle.as_bytes(),
+                    &[0x11u8; 64]
+                )
+                .unwrap(),
             "tampered inputs should fail verification"
         );
     }
@@ -556,5 +602,5 @@ mod tests {
 pub mod pq_proofs;
 
 pub use pq_proofs::{
-    PostQuantumProof, BlockValidityProof, L3TransferProof, ExecutionProof, MerklePath,
+    BlockValidityProof, ExecutionProof, L3TransferProof, MerklePath, PostQuantumProof,
 };

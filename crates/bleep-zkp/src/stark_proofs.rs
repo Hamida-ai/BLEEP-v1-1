@@ -1,18 +1,17 @@
 //! STARK proofs.
-//! 
+//!
 //! Posts-quantum secure proofs using Winterfell STARK library with hash-based transparency.
 //! Zero trusted setup required. Suitable for block validity proofs and cross-chain transfers.
 
-use winterfell::{
-    math::fields::f128::BaseElement,
-    math::FieldElement,
-    Air, AirContext, Assertion, EvaluationFrame, FieldExtension, ProofOptions,
-    TraceInfo, TransitionConstraintDegree, Prover, TraceTable, BatchingMethod,
-};
-use serde::{Serialize, Deserialize};
-use tracing::info;
 use bincode;
+use serde::{Deserialize, Serialize};
 use std::time::Instant;
+use tracing::info;
+use winterfell::{
+    math::fields::f128::BaseElement, math::FieldElement, Air, AirContext, Assertion,
+    BatchingMethod, EvaluationFrame, FieldExtension, ProofOptions, Prover, TraceInfo, TraceTable,
+    TransitionConstraintDegree,
+};
 
 // =================================================================================================
 // HELPER FUNCTIONS
@@ -89,11 +88,11 @@ pub struct BlockValidityAir {
     pub tx_count: u64,
     pub merkle_root_hash: [u8; 31],
     pub validator_pk_hash: [u8; 31],
-    
+
     // Private witnesses
     pub block_hash_witness: Option<[u8; 32]>,
     pub sk_seed_witness: Option<[u8; 32]>,
-    
+
     // AIR context
     context: AirContext<BaseElement>,
 }
@@ -110,21 +109,21 @@ impl BlockValidityAir {
         sk_seed: [u8; 32],
     ) -> Self {
         let merkle_root_hash = crate::hash_to_31_bytes(merkle_root_bytes);
-        
+
         let validator_pk_hash = crate::hash_to_31_bytes(validator_pk_bytes);
-        
+
         let trace_info = TraceInfo::new(5, 16); // 5 columns, 16 rows for hash verification
         let options = ProofOptions::new(
-            32,  // num_queries
-            8,   // blowup_factor
-            0,   // grinding_factor
+            32, // num_queries
+            8,  // blowup_factor
+            0,  // grinding_factor
             FieldExtension::Quadratic,
-            4,   // fri_fold_factor
-            31,  // fri_remainder_max_size
+            4,  // fri_fold_factor
+            31, // fri_remainder_max_size
             BatchingMethod::Linear,
             BatchingMethod::Linear,
         );
-        
+
         let air = Self {
             block_index,
             epoch_id,
@@ -136,7 +135,7 @@ impl BlockValidityAir {
             context: AirContext::new(
                 trace_info,
                 vec![TransitionConstraintDegree::new(1)], // Single constraint group
-                8, // num_assertions
+                8,                                        // num_assertions
                 options,
             ),
         };
@@ -152,12 +151,21 @@ impl BlockValidityAir {
         validator_pk_bytes: &[u8],
     ) -> Self {
         let merkle_root_hash = crate::hash_to_31_bytes(merkle_root_bytes);
-        
+
         let validator_pk_hash = crate::hash_to_31_bytes(validator_pk_bytes);
-        
+
         let trace_info = TraceInfo::new(5, 16);
-        let options = ProofOptions::new(32, 8, 0, FieldExtension::Quadratic, 4, 31, BatchingMethod::Linear, BatchingMethod::Linear);
-        
+        let options = ProofOptions::new(
+            32,
+            8,
+            0,
+            FieldExtension::Quadratic,
+            4,
+            31,
+            BatchingMethod::Linear,
+            BatchingMethod::Linear,
+        );
+
         let air = Self {
             block_index,
             epoch_id,
@@ -247,7 +255,14 @@ impl BlockValidityProver {
     /// Create a new prover with standard configuration
     pub fn new() -> Self {
         let options = ProofOptions::new(
-            32, 8, 0, FieldExtension::Quadratic, 4, 31, BatchingMethod::Linear, BatchingMethod::Linear,
+            32,
+            8,
+            0,
+            FieldExtension::Quadratic,
+            4,
+            31,
+            BatchingMethod::Linear,
+            BatchingMethod::Linear,
         );
         Self { options }
     }
@@ -263,7 +278,7 @@ impl BlockValidityProver {
         sk_seed: [u8; 32],
     ) -> Result<StarkProof, String> {
         let start = Instant::now();
-        
+
         // Create AIR circuit for this block
         let _air = BlockValidityAir::for_proving(
             block_index,
@@ -277,9 +292,11 @@ impl BlockValidityProver {
 
         // Build execution trace that satisfies the AIR constraints
         let mut trace = TraceTable::new(5, 16);
-        let _merkle_hash_u128 = merkle_root_hash_as_u128(&crate::hash_to_31_bytes(merkle_root_bytes));
-        let _validator_hash_u128 = validator_pk_hash_as_u128(&crate::hash_to_31_bytes(validator_pk_bytes));
-        
+        let _merkle_hash_u128 =
+            merkle_root_hash_as_u128(&crate::hash_to_31_bytes(merkle_root_bytes));
+        let _validator_hash_u128 =
+            validator_pk_hash_as_u128(&crate::hash_to_31_bytes(validator_pk_bytes));
+
         trace.fill(
             |state| {
                 // Initialize state at step 0
@@ -301,9 +318,10 @@ impl BlockValidityProver {
 
         // Create prover instance
         let prover = BlockValidityProver::new();
-        
+
         // Generate STARK proof using Winterfell
-        let _proof = prover.prove(trace)
+        let _proof = prover
+            .prove(trace)
             .map_err(|e| format!("STARK proof generation failed: {:?}", e))?;
 
         let prove_time_ms = start.elapsed().as_millis() as u64;
@@ -335,13 +353,16 @@ impl Prover for BlockValidityProver {
     type HashFn = winterfell::crypto::hashers::Blake3_256<BaseElement>;
     type VC = winterfell::crypto::MerkleTree<Self::HashFn>;
     type RandomCoin = winterfell::crypto::DefaultRandomCoin<Self::HashFn>;
-    type TraceLde<E> = winterfell::DefaultTraceLde<E, Self::HashFn, Self::VC>
+    type TraceLde<E>
+        = winterfell::DefaultTraceLde<E, Self::HashFn, Self::VC>
     where
         E: FieldElement<BaseField = Self::BaseField>;
-    type ConstraintEvaluator<'a, E> = winterfell::DefaultConstraintEvaluator<'a, Self::Air, E>
+    type ConstraintEvaluator<'a, E>
+        = winterfell::DefaultConstraintEvaluator<'a, Self::Air, E>
     where
         E: FieldElement<BaseField = Self::BaseField>;
-    type ConstraintCommitment<E> = winterfell::DefaultConstraintCommitment<E, Self::HashFn, Self::VC>
+    type ConstraintCommitment<E>
+        = winterfell::DefaultConstraintCommitment<E, Self::HashFn, Self::VC>
     where
         E: FieldElement<BaseField = Self::BaseField>;
 
@@ -375,7 +396,11 @@ impl Prover for BlockValidityProver {
     where
         E: FieldElement<BaseField = Self::BaseField>,
     {
-        winterfell::DefaultConstraintEvaluator::new(air, aux_rand_elements, composition_coefficients)
+        winterfell::DefaultConstraintEvaluator::new(
+            air,
+            aux_rand_elements,
+            composition_coefficients,
+        )
     }
 
     fn build_constraint_commitment<E>(
@@ -384,7 +409,10 @@ impl Prover for BlockValidityProver {
         num_constraint_composition_columns: usize,
         domain: &winterfell::StarkDomain<Self::BaseField>,
         partition_options: winterfell::PartitionOptions,
-    ) -> (Self::ConstraintCommitment<E>, winterfell::CompositionPoly<E>)
+    ) -> (
+        Self::ConstraintCommitment<E>,
+        winterfell::CompositionPoly<E>,
+    )
     where
         E: FieldElement<BaseField = Self::BaseField>,
     {
@@ -433,30 +461,45 @@ impl BlockValidityVerifier {
         // Extract and verify public inputs match
         let mut offset = 8;
         let proof_block_index = u64::from_le_bytes([
-            proof.proof_bytes[offset], proof.proof_bytes[offset + 1],
-            proof.proof_bytes[offset + 2], proof.proof_bytes[offset + 3],
-            proof.proof_bytes[offset + 4], proof.proof_bytes[offset + 5],
-            proof.proof_bytes[offset + 6], proof.proof_bytes[offset + 7],
+            proof.proof_bytes[offset],
+            proof.proof_bytes[offset + 1],
+            proof.proof_bytes[offset + 2],
+            proof.proof_bytes[offset + 3],
+            proof.proof_bytes[offset + 4],
+            proof.proof_bytes[offset + 5],
+            proof.proof_bytes[offset + 6],
+            proof.proof_bytes[offset + 7],
         ]);
         offset += 8;
 
         let proof_epoch_id = u64::from_le_bytes([
-            proof.proof_bytes[offset], proof.proof_bytes[offset + 1],
-            proof.proof_bytes[offset + 2], proof.proof_bytes[offset + 3],
-            proof.proof_bytes[offset + 4], proof.proof_bytes[offset + 5],
-            proof.proof_bytes[offset + 6], proof.proof_bytes[offset + 7],
+            proof.proof_bytes[offset],
+            proof.proof_bytes[offset + 1],
+            proof.proof_bytes[offset + 2],
+            proof.proof_bytes[offset + 3],
+            proof.proof_bytes[offset + 4],
+            proof.proof_bytes[offset + 5],
+            proof.proof_bytes[offset + 6],
+            proof.proof_bytes[offset + 7],
         ]);
         offset += 8;
 
         let proof_tx_count = u64::from_le_bytes([
-            proof.proof_bytes[offset], proof.proof_bytes[offset + 1],
-            proof.proof_bytes[offset + 2], proof.proof_bytes[offset + 3],
-            proof.proof_bytes[offset + 4], proof.proof_bytes[offset + 5],
-            proof.proof_bytes[offset + 6], proof.proof_bytes[offset + 7],
+            proof.proof_bytes[offset],
+            proof.proof_bytes[offset + 1],
+            proof.proof_bytes[offset + 2],
+            proof.proof_bytes[offset + 3],
+            proof.proof_bytes[offset + 4],
+            proof.proof_bytes[offset + 5],
+            proof.proof_bytes[offset + 6],
+            proof.proof_bytes[offset + 7],
         ]);
 
         // Verify public inputs match
-        if proof_block_index != block_index || proof_epoch_id != epoch_id || proof_tx_count != tx_count {
+        if proof_block_index != block_index
+            || proof_epoch_id != epoch_id
+            || proof_tx_count != tx_count
+        {
             info!("❌ STARK verification failed: public inputs mismatch");
             return Ok(false);
         }
@@ -475,10 +518,9 @@ fn bytes31_to_base_element(bytes: &[u8; 31]) -> BaseElement {
     let mut padded = [0u8; 32];
     padded[..31].copy_from_slice(bytes);
     BaseElement::new(u128::from_le_bytes([
-        padded[0], padded[1], padded[2], padded[3],
-        padded[4], padded[5], padded[6], padded[7],
-        padded[8], padded[9], padded[10], padded[11],
-        padded[12], padded[13], padded[14], padded[15],
+        padded[0], padded[1], padded[2], padded[3], padded[4], padded[5], padded[6], padded[7],
+        padded[8], padded[9], padded[10], padded[11], padded[12], padded[13], padded[14],
+        padded[15],
     ]))
 }
 
@@ -488,13 +530,7 @@ mod tests {
 
     #[test]
     fn test_block_validity_circuit_creation() {
-        let _air = BlockValidityAir::for_verifying(
-            1,
-            0,
-            3,
-            &vec![0xAAu8; 31],
-            &vec![0xBBu8; 31],
-        );
+        let _air = BlockValidityAir::for_verifying(1, 0, 3, &vec![0xAAu8; 31], &vec![0xBBu8; 31]);
         // Circuit should be created without panicking
     }
 
@@ -505,10 +541,10 @@ mod tests {
             public_inputs: vec![1, 2, 3],
             prove_time_ms: 100,
         };
-        
+
         let bytes = proof.to_bytes().expect("Serialization failed");
         let deserialized = StarkProof::from_bytes(&bytes).expect("Deserialization failed");
-        
+
         assert_eq!(deserialized.proof_bytes, proof.proof_bytes);
         assert_eq!(deserialized.public_inputs, proof.public_inputs);
     }

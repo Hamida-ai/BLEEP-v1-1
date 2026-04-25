@@ -19,13 +19,13 @@ use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tracing::{debug, info, warn};
 
-use bleep_connect_types::{
-    ZKProof, ProofBatch, ProofType, StateCommitment, CommitmentType,
-    BleepConnectError, BleepConnectResult,
-    constants::{BATCH_TARGET_SIZE, BATCH_INTERVAL},
-};
-use bleep_connect_crypto::{sha256, merkle_root};
 use bleep_connect_commitment_chain::CommitmentChain;
+use bleep_connect_crypto::{merkle_root, sha256};
+use bleep_connect_types::{
+    constants::{BATCH_INTERVAL, BATCH_TARGET_SIZE},
+    BleepConnectError, BleepConnectResult, CommitmentType, ProofBatch, ProofType, StateCommitment,
+    ZKProof,
+};
 use bleep_crypto::pq_crypto::{DigitalSignature, PublicKey, SecretKey, SignatureScheme};
 
 const L3_PROOF_KEY_SEED: &[u8] = b"BLEEP-L3-PROOF-SEED-V1-UNIQUE-AND-STATIC";
@@ -41,7 +41,10 @@ pub struct ProofCache {
 
 impl ProofCache {
     pub fn new(max_size: usize) -> Self {
-        Self { proofs: DashMap::new(), max_size }
+        Self {
+            proofs: DashMap::new(),
+            max_size,
+        }
     }
 
     pub fn insert(&self, proof: ZKProof) {
@@ -98,7 +101,9 @@ pub struct ProofGenerator {
 impl ProofGenerator {
     pub fn new() -> BleepConnectResult<Self> {
         let (_public_key, signing_key) = SignatureScheme::keygen_from_seed(L3_PROOF_KEY_SEED)
-            .map_err(|e| BleepConnectError::InternalError(format!("Proof key generation failed: {e:?}")))?;
+            .map_err(|e| {
+                BleepConnectError::InternalError(format!("Proof key generation failed: {e:?}"))
+            })?;
         Ok(Self {
             cache: Arc::new(ProofCache::new(1_000)),
             signing_key,
@@ -125,8 +130,9 @@ impl ProofGenerator {
         transcript.extend_from_slice(&input.dest_tx_hash);
         transcript.extend_from_slice(&input.dest_amount_delivered.to_le_bytes());
 
-        let signature = SignatureScheme::sign(&transcript, &self.signing_key)
-            .map_err(|e| BleepConnectError::ProofVerificationFailed(format!("Proof signing failed: {e:?}")))?;
+        let signature = SignatureScheme::sign(&transcript, &self.signing_key).map_err(|e| {
+            BleepConnectError::ProofVerificationFailed(format!("Proof signing failed: {e:?}"))
+        })?;
 
         let proof_bytes = signature.as_bytes();
         let zk_proof = ZKProof {
@@ -139,7 +145,11 @@ impl ProofGenerator {
         };
 
         self.cache.insert(zk_proof.clone());
-        info!("Generated post-quantum proof {} for intent {}", hex::encode(proof_id), hex::encode(input.intent_id));
+        info!(
+            "Generated post-quantum proof {} for intent {}",
+            hex::encode(proof_id),
+            hex::encode(input.intent_id)
+        );
         Ok(zk_proof)
     }
 
@@ -148,7 +158,8 @@ impl ProofGenerator {
             input.intent_id.as_slice(),
             &input.min_dest_amount.to_be_bytes(),
             &input.source_state_root,
-        ].concat();
+        ]
+        .concat();
         sha256(&data)
     }
 }
@@ -164,7 +175,9 @@ pub struct ProofVerifier {
 impl ProofVerifier {
     pub fn new() -> BleepConnectResult<Self> {
         let (public_key, _signing_key) = SignatureScheme::keygen_from_seed(L3_PROOF_KEY_SEED)
-            .map_err(|e| BleepConnectError::InternalError(format!("Verifier key generation failed: {e:?}")))?;
+            .map_err(|e| {
+                BleepConnectError::InternalError(format!("Verifier key generation failed: {e:?}"))
+            })?;
         Ok(Self { public_key })
     }
 
@@ -172,7 +185,7 @@ impl ProofVerifier {
     pub fn verify(&self, proof: &ZKProof) -> BleepConnectResult<bool> {
         if proof.public_inputs.len() < 4 {
             return Err(BleepConnectError::ProofVerificationFailed(
-                "Insufficient public inputs for proof verification".into()
+                "Insufficient public inputs for proof verification".into(),
             ));
         }
 
@@ -181,16 +194,17 @@ impl ProofVerifier {
             transcript.extend_from_slice(input);
         }
 
-        let signature = DigitalSignature::from_bytes(&proof.proof_bytes)
-            .map_err(|e| BleepConnectError::ProofVerificationFailed(
-                format!("Invalid signature encoding: {e:?}")
-            ))?;
+        let signature = DigitalSignature::from_bytes(&proof.proof_bytes).map_err(|e| {
+            BleepConnectError::ProofVerificationFailed(format!("Invalid signature encoding: {e:?}"))
+        })?;
 
-        let valid = SignatureScheme::verify(&transcript, &signature, &self.public_key)
-            .is_ok();
+        let valid = SignatureScheme::verify(&transcript, &signature, &self.public_key).is_ok();
 
         if valid {
-            debug!("Proof {} verified successfully", hex::encode(proof.proof_id));
+            debug!(
+                "Proof {} verified successfully",
+                hex::encode(proof.proof_id)
+            );
         } else {
             warn!("Proof {} FAILED verification", hex::encode(proof.proof_id));
         }
@@ -254,7 +268,12 @@ impl BatchAggregator {
         };
 
         self.completed_batches.insert(batch_id, proof_batch.clone());
-        info!("Batch {} aggregated: {} proofs, root={}", hex::encode(batch_id), proof_ids.len(), hex::encode(aggregated_root));
+        info!(
+            "Batch {} aggregated: {} proofs, root={}",
+            hex::encode(batch_id),
+            proof_ids.len(),
+            hex::encode(aggregated_root)
+        );
         Some(proof_batch)
     }
 
@@ -264,7 +283,9 @@ impl BatchAggregator {
 }
 
 impl Default for BatchAggregator {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -297,7 +318,7 @@ impl Layer3ZKProof {
         let valid = self.verifier.verify(&proof)?;
         if !valid {
             return Err(BleepConnectError::ProofVerificationFailed(
-                "Self-verification of generated proof failed".into()
+                "Self-verification of generated proof failed".into(),
             ));
         }
 
@@ -327,7 +348,10 @@ impl Layer3ZKProof {
                     created_at: now(),
                 };
                 self.commitment_chain.submit_commitment(commitment).await?;
-                info!("Batch {} anchored to commitment chain", hex::encode(batch.batch_id));
+                info!(
+                    "Batch {} anchored to commitment chain",
+                    hex::encode(batch.batch_id)
+                );
                 Ok(Some(batch.batch_id))
             }
         }
@@ -429,14 +453,16 @@ mod tests {
     #[test]
     fn test_batch_aggregator_merkle() {
         let agg = BatchAggregator::new();
-        let proofs: Vec<ZKProof> = (0..5).map(|i| ZKProof {
-            proof_id: sha256(&[i]),
-            proof_type: ProofType::ExecutionCompleted,
-            proof_bytes: vec![i],
-            public_inputs: vec![sha256(&[i]).to_vec()],
-            intent_id: sha256(&[i]),
-            generated_at: 0,
-        }).collect();
+        let proofs: Vec<ZKProof> = (0..5)
+            .map(|i| ZKProof {
+                proof_id: sha256(&[i]),
+                proof_type: ProofType::ExecutionCompleted,
+                proof_bytes: vec![i],
+                public_inputs: vec![sha256(&[i]).to_vec()],
+                intent_id: sha256(&[i]),
+                generated_at: 0,
+            })
+            .collect();
 
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()

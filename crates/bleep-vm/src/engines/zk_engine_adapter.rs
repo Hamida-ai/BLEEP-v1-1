@@ -3,10 +3,7 @@
 //! Verifies transparent hash-based proofs and optionally executes post-verify WASM.
 
 use crate::error::{VmError, VmResult};
-use crate::execution::{
-    execution_context::ExecutionContext,
-    state_transition::StateDiff,
-};
+use crate::execution::{execution_context::ExecutionContext, state_transition::StateDiff};
 use crate::intent::TargetVm;
 use crate::router::vm_router::{Engine, EngineResult};
 use crate::types::{ExecutionLog, LogLevel};
@@ -16,7 +13,9 @@ use tracing::{debug, instrument, warn};
 pub struct ZkEngineAdapter;
 
 impl ZkEngineAdapter {
-    pub fn new() -> Self { ZkEngineAdapter }
+    pub fn new() -> Self {
+        ZkEngineAdapter
+    }
 
     /// Parse a post-quantum proof packet: [ExecutionProof(168)]
     fn parse_proof_packet(bytecode: &[u8]) -> Option<Vec<u8>> {
@@ -34,7 +33,7 @@ impl ZkEngineAdapter {
     /// Checks that proof deserializes correctly and state transitions are consistent.
     fn verify_pq_proof(proof_bytes: &[u8]) -> VmResult<bool> {
         use crate::engines::zk_engine::ExecutionProof;
-        
+
         // Structural check: deserialize the proof
         match ExecutionProof::deserialize(proof_bytes) {
             Ok(proof) => {
@@ -55,12 +54,16 @@ impl ZkEngineAdapter {
 }
 
 impl Default for ZkEngineAdapter {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[async_trait::async_trait]
 impl Engine for ZkEngineAdapter {
-    fn name(&self) -> &'static str { "zk-pq" }
+    fn name(&self) -> &'static str {
+        "zk-pq"
+    }
 
     fn supports(&self, vm: &TargetVm) -> bool {
         matches!(vm, TargetVm::Zk)
@@ -69,14 +72,18 @@ impl Engine for ZkEngineAdapter {
     #[instrument(skip(self, bytecode, calldata), fields(engine = "zk-pq"))]
     async fn execute(
         &self,
-        _ctx:      &ExecutionContext,
-        bytecode:  &[u8],
-        calldata:  &[u8],
+        _ctx: &ExecutionContext,
+        bytecode: &[u8],
+        calldata: &[u8],
         gas_limit: u64,
     ) -> VmResult<EngineResult> {
         let start = Instant::now();
 
-        let packet = if !bytecode.is_empty() { bytecode } else { calldata };
+        let packet = if !bytecode.is_empty() {
+            bytecode
+        } else {
+            calldata
+        };
 
         const PROOF_LEN: usize = 32 + 32 + 8 + 32 + 32 + 32; // 168 bytes
 
@@ -90,41 +97,43 @@ impl Engine for ZkEngineAdapter {
         if gas_limit < base_gas {
             return Err(VmError::GasLimitExceeded {
                 requested: base_gas,
-                limit:     gas_limit,
+                limit: gas_limit,
             });
         }
 
         let (proof_ok, logs) = match Self::parse_proof_packet(packet) {
-            Some(proof_bytes) => {
-                match Self::verify_pq_proof(&proof_bytes) {
-                    Ok(valid) => {
-                        let log = ExecutionLog {
-                            level:   if valid { LogLevel::Info } else { LogLevel::Error },
-                            message: if valid {
-                                "Post-quantum proof verified successfully".into()
-                            } else {
-                                "Post-quantum proof verification failed".into()
-                            },
-                            data: Vec::new(),
-                        };
-                        (valid, vec![log])
-                    }
-                    Err(e) => {
-                        warn!("Post-quantum proof error: {e}");
-                        let log = ExecutionLog {
-                            level:   LogLevel::Error,
-                            message: format!("PQ proof error: {e}"),
-                            data:    Vec::new(),
-                        };
-                        (false, vec![log])
-                    }
+            Some(proof_bytes) => match Self::verify_pq_proof(&proof_bytes) {
+                Ok(valid) => {
+                    let log = ExecutionLog {
+                        level: if valid {
+                            LogLevel::Info
+                        } else {
+                            LogLevel::Error
+                        },
+                        message: if valid {
+                            "Post-quantum proof verified successfully".into()
+                        } else {
+                            "Post-quantum proof verification failed".into()
+                        },
+                        data: Vec::new(),
+                    };
+                    (valid, vec![log])
                 }
-            }
+                Err(e) => {
+                    warn!("Post-quantum proof error: {e}");
+                    let log = ExecutionLog {
+                        level: LogLevel::Error,
+                        message: format!("PQ proof error: {e}"),
+                        data: Vec::new(),
+                    };
+                    (false, vec![log])
+                }
+            },
             None => {
                 let log = ExecutionLog {
-                    level:   LogLevel::Warning,
+                    level: LogLevel::Warning,
                     message: "Post-quantum proof format validation failed".into(),
-                    data:    vec![],
+                    data: vec![],
                 };
                 (false, vec![log])
             }
@@ -134,13 +143,13 @@ impl Engine for ZkEngineAdapter {
 
         if !proof_ok {
             return Ok(EngineResult {
-                success:       false,
-                output:        Vec::new(),
+                success: false,
+                output: Vec::new(),
                 gas_used,
-                state_diff:    StateDiff::empty(),
+                state_diff: StateDiff::empty(),
                 logs,
                 revert_reason: Some("Post-quantum proof verification failed".into()),
-                exec_time:     start.elapsed(),
+                exec_time: start.elapsed(),
             });
         }
 
@@ -150,11 +159,7 @@ impl Engine for ZkEngineAdapter {
             Sha256::digest(packet).into()
         };
         // Emit ZK verification event (address 0xE0 = ZK verifier contract)
-        diff.emit_event(
-            [0xE0u8; 32],
-            vec![proof_hash],
-            calldata.to_vec(),
-        );
+        diff.emit_event([0xE0u8; 32], vec![proof_hash], calldata.to_vec());
 
         debug!(
             proof_ok,
@@ -164,23 +169,23 @@ impl Engine for ZkEngineAdapter {
         );
 
         Ok(EngineResult {
-            success:       true,
-            output:        proof_hash.to_vec(),
+            success: true,
+            output: proof_hash.to_vec(),
             gas_used,
-            state_diff:    diff,
+            state_diff: diff,
             logs,
             revert_reason: None,
-            exec_time:     start.elapsed(),
+            exec_time: start.elapsed(),
         })
     }
 
     async fn deploy(
         &self,
-        _ctx:       &ExecutionContext,
-        _bytecode:  &[u8],
+        _ctx: &ExecutionContext,
+        _bytecode: &[u8],
         _init_args: &[u8],
         _gas_limit: u64,
-        _salt:      Option<[u8; 32]>,
+        _salt: Option<[u8; 32]>,
     ) -> VmResult<EngineResult> {
         Err(VmError::ValidationError(
             "ZK engine does not support contract deployment".into(),
@@ -196,8 +201,12 @@ mod tests {
 
     fn ctx(gas: u64) -> ExecutionContext {
         ExecutionContext::new(
-            BlockEnv::default(), TxEnv::default(), gas,
-            ChainId::Bleep, uuid::Uuid::new_v4(), 128,
+            BlockEnv::default(),
+            TxEnv::default(),
+            gas,
+            ChainId::Bleep,
+            uuid::Uuid::new_v4(),
+            128,
         )
     }
 

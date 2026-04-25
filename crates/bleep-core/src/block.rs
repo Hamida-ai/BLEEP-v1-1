@@ -26,14 +26,14 @@
 //! and accepted with a length-check downgrade path.  The genesis block (empty
 //! `validator_signature`) is always accepted.
 
-use serde::{Serialize, Deserialize};
-use sha3::{Digest, Sha3_256};
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
+use sha3::{Digest, Sha3_256};
 
 // bleep_crypto::tx_signer used by InboundBlockHandler in main.rs (not directly in block.rs)
 use bleep_crypto::pq_crypto::SignatureScheme;
 use pqcrypto_sphincsplus::sphincsshake256fsimple;
-use pqcrypto_traits::sign::{SecretKey as _, DetachedSignature as _};
+use pqcrypto_traits::sign::{DetachedSignature as _, SecretKey as _};
 
 /// Byte length of a SPHINCS+-SHAKE-256-simple public key.
 /// pqcrypto_sphincsplus::sphincsshake256fsimple generates 64-byte public keys.
@@ -99,7 +99,7 @@ pub struct Block {
 
 impl Block {
     pub fn new(index: u64, transactions: Vec<Transaction>, previous_hash: String) -> Self {
-        let timestamp   = Utc::now().timestamp() as u64;
+        let timestamp = Utc::now().timestamp() as u64;
         let merkle_root = Block::calculate_merkle_root(&transactions);
         Self {
             index,
@@ -129,14 +129,22 @@ impl Block {
         shard_id: u64,
         shard_state_root: String,
     ) -> Self {
-        let timestamp   = Utc::now().timestamp() as u64;
+        let timestamp = Utc::now().timestamp() as u64;
         let merkle_root = Block::calculate_merkle_root(&transactions);
         Self {
-            index, timestamp, transactions, previous_hash, merkle_root,
+            index,
+            timestamp,
+            transactions,
+            previous_hash,
+            merkle_root,
             validator_signature: vec![],
             zk_proof: vec![],
-            epoch_id, consensus_mode, protocol_version,
-            shard_registry_root, shard_id, shard_state_root,
+            epoch_id,
+            consensus_mode,
+            protocol_version,
+            shard_registry_root,
+            shard_id,
+            shard_state_root,
         }
     }
 
@@ -194,14 +202,26 @@ impl Block {
     /// `sphincs_pk_bytes` must be the corresponding 64-byte public key.
     ///
     /// On success, sets `self.validator_signature = pk_bytes(64) || sig(49856)`.
-    pub fn sign_block_with_pk(&mut self, sphincs_sk_bytes: &[u8], sphincs_pk_bytes: &[u8]) -> Result<(), String> {
+    pub fn sign_block_with_pk(
+        &mut self,
+        sphincs_sk_bytes: &[u8],
+        sphincs_pk_bytes: &[u8],
+    ) -> Result<(), String> {
         if sphincs_pk_bytes.len() != SPHINCS_PK_LEN {
-            return Err(format!("Public key must be {} bytes, got {}", SPHINCS_PK_LEN, sphincs_pk_bytes.len()));
+            return Err(format!(
+                "Public key must be {} bytes, got {}",
+                SPHINCS_PK_LEN,
+                sphincs_pk_bytes.len()
+            ));
         }
 
-        let sk = sphincsshake256fsimple::SecretKey::from_bytes(sphincs_sk_bytes)
-            .map_err(|e| format!("Invalid SPHINCS+ secret key ({} bytes): {:?}",
-                                 sphincs_sk_bytes.len(), e))?;
+        let sk = sphincsshake256fsimple::SecretKey::from_bytes(sphincs_sk_bytes).map_err(|e| {
+            format!(
+                "Invalid SPHINCS+ secret key ({} bytes): {:?}",
+                sphincs_sk_bytes.len(),
+                e
+            )
+        })?;
 
         // Sign the block hash with SPHINCS+
         let block_hash_bytes = self.compute_hash_bytes();
@@ -210,8 +230,8 @@ impl Block {
 
         // Build signature: pk(64) || sig(49856)
         let mut vsig = Vec::with_capacity(VALIDATOR_SIG_LEN);
-        vsig.extend_from_slice(sphincs_pk_bytes);  // [0..64]   validator public key
-        vsig.extend_from_slice(sig_bytes);         // [64..]    SPHINCS+ detached sig
+        vsig.extend_from_slice(sphincs_pk_bytes); // [0..64]   validator public key
+        vsig.extend_from_slice(sig_bytes); // [64..]    SPHINCS+ detached sig
         self.validator_signature = vsig;
 
         self.generate_zkp();
@@ -275,10 +295,13 @@ impl Block {
     /// Legacy Sprint 5 verification (SHA3 scheme, 96-byte sig).
     fn verify_signature_legacy(&self, public_key: &[u8]) -> Result<bool, String> {
         if public_key.len() != 32 {
-            return Err(format!("Legacy pk must be 32 bytes, got {}", public_key.len()));
+            return Err(format!(
+                "Legacy pk must be 32 bytes, got {}",
+                public_key.len()
+            ));
         }
         let sig = &self.validator_signature;
-        let stored_pk  = &sig[0..32];
+        let stored_pk = &sig[0..32];
         let stored_msg = &sig[32..64];
         let stored_prf = &sig[64..96];
 
@@ -358,9 +381,9 @@ impl Block {
         if self.validator_signature.len() < 32 {
             return false;
         }
-        let vk               = &self.validator_signature[0..32];
+        let vk = &self.validator_signature[0..32];
         let stored_challenge = &self.zk_proof[0..32];
-        let stored_response  = &self.zk_proof[32..64];
+        let stored_response = &self.zk_proof[32..64];
 
         let mut ch = Sha3_256::new();
         ch.update(b"BLEEP-ZKP-v1");
@@ -394,26 +417,32 @@ impl Block {
         if transactions.is_empty() {
             return String::new();
         }
-        let mut hashes: Vec<String> = transactions.iter().map(|tx| {
-            let mut h = Sha3_256::new();
-            h.update(tx.sender.as_bytes());
-            h.update(tx.receiver.as_bytes());
-            h.update(tx.amount.to_le_bytes());
-            h.update(tx.timestamp.to_le_bytes());
-            hex::encode(h.finalize())
-        }).collect();
+        let mut hashes: Vec<String> = transactions
+            .iter()
+            .map(|tx| {
+                let mut h = Sha3_256::new();
+                h.update(tx.sender.as_bytes());
+                h.update(tx.receiver.as_bytes());
+                h.update(tx.amount.to_le_bytes());
+                h.update(tx.timestamp.to_le_bytes());
+                hex::encode(h.finalize())
+            })
+            .collect();
 
         while hashes.len() > 1 {
             if hashes.len() % 2 == 1 {
                 let last = hashes.last().unwrap().clone();
                 hashes.push(last);
             }
-            hashes = hashes.chunks(2).map(|pair| {
-                let mut h = Sha3_256::new();
-                h.update(pair[0].as_bytes());
-                h.update(pair[1].as_bytes());
-                hex::encode(h.finalize())
-            }).collect();
+            hashes = hashes
+                .chunks(2)
+                .map(|pair| {
+                    let mut h = Sha3_256::new();
+                    h.update(pair[0].as_bytes());
+                    h.update(pair[1].as_bytes());
+                    hex::encode(h.finalize())
+                })
+                .collect();
         }
         hashes[0].clone()
     }
@@ -464,8 +493,11 @@ mod tests {
         b.sign_block(&sk_bytes).expect("sign_block failed");
 
         // validator_signature should be pk_hash(32) + sphincs_sig
-        assert!(b.validator_signature.len() > 32,
-                "sig len={}", b.validator_signature.len());
+        assert!(
+            b.validator_signature.len() > 32,
+            "sig len={}",
+            b.validator_signature.len()
+        );
 
         // ZKP should be 64 bytes
         assert_eq!(b.zk_proof.len(), 64);
@@ -496,15 +528,23 @@ mod tests {
         let (sk, pk) = derive_block_keypair(&seed).unwrap();
         let mut b = Block::new(3, vec![], "0".to_string());
         // Build a legacy 96-byte sig manually
-        let mut h2 = Sha3_256::new(); h2.update(b.compute_hash().as_bytes());
+        let mut h2 = Sha3_256::new();
+        h2.update(b.compute_hash().as_bytes());
         let msg: [u8; 32] = h2.finalize().into();
-        let mut h3 = Sha3_256::new(); h3.update(&msg); h3.update(&sk);
+        let mut h3 = Sha3_256::new();
+        h3.update(&msg);
+        h3.update(&sk);
         let prf: [u8; 32] = h3.finalize().into();
         let mut sig = Vec::with_capacity(96);
-        sig.extend_from_slice(&pk); sig.extend_from_slice(&msg); sig.extend_from_slice(&prf);
+        sig.extend_from_slice(&pk);
+        sig.extend_from_slice(&msg);
+        sig.extend_from_slice(&prf);
         b.validator_signature = sig;
         b.generate_zkp();
-        assert!(b.verify_signature(&pk).unwrap(), "legacy sig should be accepted");
+        assert!(
+            b.verify_signature(&pk).unwrap(),
+            "legacy sig should be accepted"
+        );
         assert!(b.verify_zkp());
     }
 

@@ -23,7 +23,7 @@ use crate::error::{VmError, VmResult};
 
 /// Post-quantum proof of execution correctness.
 ///
-/// Uses hash-based commitments and SPHINCS+ signatures for transparent, 
+/// Uses hash-based commitments and SPHINCS+ signatures for transparent,
 /// post-quantum-secure proofs of state transitions.
 #[derive(Clone, Debug)]
 pub struct ExecutionProof {
@@ -85,24 +85,30 @@ impl ExecutionProof {
         }
 
         let mut offset = 0;
-        let state_root_before: [u8; 32] = bytes[offset..offset + 32].try_into()
+        let state_root_before: [u8; 32] = bytes[offset..offset + 32]
+            .try_into()
             .map_err(|_| VmError::ExecutionFailed("parse error".into()))?;
         offset += 32;
-        let state_root_after: [u8; 32] = bytes[offset..offset + 32].try_into()
+        let state_root_after: [u8; 32] = bytes[offset..offset + 32]
+            .try_into()
             .map_err(|_| VmError::ExecutionFailed("parse error".into()))?;
         offset += 32;
         let gas_used = u64::from_be_bytes(
-            bytes[offset..offset + 8].try_into()
-                .map_err(|_| VmError::ExecutionFailed("parse error".into()))?
+            bytes[offset..offset + 8]
+                .try_into()
+                .map_err(|_| VmError::ExecutionFailed("parse error".into()))?,
         );
         offset += 8;
-        let tx_hash: [u8; 32] = bytes[offset..offset + 32].try_into()
+        let tx_hash: [u8; 32] = bytes[offset..offset + 32]
+            .try_into()
             .map_err(|_| VmError::ExecutionFailed("parse error".into()))?;
         offset += 32;
-        let trace_hash: [u8; 32] = bytes[offset..offset + 32].try_into()
+        let trace_hash: [u8; 32] = bytes[offset..offset + 32]
+            .try_into()
             .map_err(|_| VmError::ExecutionFailed("parse error".into()))?;
         offset += 32;
-        let proof_commitment: [u8; 32] = bytes[offset..offset + 32].try_into()
+        let proof_commitment: [u8; 32] = bytes[offset..offset + 32]
+            .try_into()
             .map_err(|_| VmError::ExecutionFailed("parse error".into()))?;
 
         Ok(ExecutionProof {
@@ -124,7 +130,7 @@ impl ExecutionProof {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Post-quantum proof generator using deterministic hash commitments.
-/// 
+///
 /// Uses SHA256 for transparent, deterministic proofs without trusted setup.
 /// Suitable for blockchain consensus: no MPC ceremony, no pairing checks.
 pub struct PostQuantumProver {
@@ -134,7 +140,7 @@ pub struct PostQuantumProver {
 
 impl PostQuantumProver {
     /// Create a new post-quantum prover with a given seed.
-    /// 
+    ///
     /// The seed is used for deterministic proof generation.
     pub fn new(seed: u64) -> VmResult<Self> {
         Ok(PostQuantumProver { seed })
@@ -149,15 +155,15 @@ impl PostQuantumProver {
         trace: &[u8],
     ) -> VmResult<Vec<u8>> {
         let proof = ExecutionProof::new(state_before, state_after, gas_used, tx_hash, trace);
-        
-        // Return serialized proof  
+
+        // Return serialized proof
         let result = proof.serialize();
-        
+
         debug!(
             proof_len = result.len(),
             "Post-quantum transparent proof generated"
         );
-        
+
         Ok(result)
     }
 }
@@ -177,14 +183,17 @@ impl PostQuantumVerifier {
 
     pub fn verify(&self, proof_bytes: &[u8]) -> VmResult<bool> {
         const PROOF_LEN: usize = 32 + 32 + 8 + 32 + 32 + 32; // ExecutionProof serialized
-        
+
         if proof_bytes.len() != PROOF_LEN {
-            warn!("Invalid proof length: expected {}, got {}", 
-                  PROOF_LEN, proof_bytes.len());
+            warn!(
+                "Invalid proof length: expected {}, got {}",
+                PROOF_LEN,
+                proof_bytes.len()
+            );
             return Ok(false);
         }
-        
-        // Parse the proof to validate structure  
+
+        // Parse the proof to validate structure
         match ExecutionProof::deserialize(proof_bytes) {
             Ok(proof) => {
                 // Verify proof commitment is consistent
@@ -195,14 +204,17 @@ impl PostQuantumVerifier {
                     &proof.tx_hash,
                     b"", // Empty trace for verification
                 );
-                
+
                 // The proof commitment should match if trace hash is valid
-                let verified = proof.proof_commitment == reconstructed.proof_commitment ||
-                               proof.trace_hash != [0u8; 32];
-                
-                debug!(verified = verified, "Post-quantum proof verification result");
+                let verified = proof.proof_commitment == reconstructed.proof_commitment
+                    || proof.trace_hash != [0u8; 32];
+
+                debug!(
+                    verified = verified,
+                    "Post-quantum proof verification result"
+                );
                 Ok(verified)
-            },
+            }
             Err(e) => {
                 warn!("Failed to deserialize proof: {:?}", e);
                 Ok(false)
@@ -232,7 +244,7 @@ mod tests {
         let trace = b"test trace";
 
         let proof = ExecutionProof::new(&state_before, &state_after, gas_used, &tx_hash, trace);
-        
+
         assert_eq!(proof.state_root_before, state_before);
         assert_eq!(proof.state_root_after, state_after);
         assert_eq!(proof.gas_used, gas_used);
@@ -262,12 +274,14 @@ mod tests {
     #[test]
     fn test_post_quantum_prover_creates() {
         let prover = PostQuantumProver::new(42).expect("prover creation failed");
-        
+
         let state_before = [1u8; 32];
         let state_after = [2u8; 32];
-        let proof = prover.prove(&state_before, &state_after, 100_000, &[3u8; 32], b"trace").unwrap();
-        
-        // Proof should be ExecutionProof (168 bytes) 
+        let proof = prover
+            .prove(&state_before, &state_after, 100_000, &[3u8; 32], b"trace")
+            .unwrap();
+
+        // Proof should be ExecutionProof (168 bytes)
         const PROOF_LEN: usize = 32 + 32 + 8 + 32 + 32 + 32; // 168 bytes
         assert_eq!(proof.len(), PROOF_LEN, "Proof length mismatch");
     }
@@ -281,11 +295,18 @@ mod tests {
         let state_after = [2u8; 32];
         let trace = b"test trace";
 
-        let proof1 = prover1.prove(&state_before, &state_after, 100_000, &[3u8; 32], trace).unwrap();
-        let proof2 = prover2.prove(&state_before, &state_after, 100_000, &[3u8; 32], trace).unwrap();
+        let proof1 = prover1
+            .prove(&state_before, &state_after, 100_000, &[3u8; 32], trace)
+            .unwrap();
+        let proof2 = prover2
+            .prove(&state_before, &state_after, 100_000, &[3u8; 32], trace)
+            .unwrap();
 
         // Same seed should produce same proofs (deterministic)
-        assert_eq!(proof1, proof2, "Post-quantum proofs with same seed must be identical");
+        assert_eq!(
+            proof1, proof2,
+            "Post-quantum proofs with same seed must be identical"
+        );
     }
 
     #[test]
@@ -299,9 +320,10 @@ mod tests {
         let gas_used = 100_000u64;
         let trace = b"execution trace";
 
-        let proof = prover.prove(&state_before, &state_after, gas_used, &tx_hash, trace)
+        let proof = prover
+            .prove(&state_before, &state_after, gas_used, &tx_hash, trace)
             .expect("proof generation failed");
-        
+
         let verified = verifier.verify(&proof).expect("verification failed");
         assert!(verified, "Valid post-quantum proof must verify");
     }
@@ -309,12 +331,12 @@ mod tests {
     #[test]
     fn test_post_quantum_verify_wrongproof() {
         let verifier = PostQuantumVerifier::new(42).expect("verifier failed");
-        
+
         // Create a corrupted proof
         let mut proof = vec![0u8; 168 + 7856];
         proof[0] = 0xFF;
         proof[1] = 0xFF;
-        
+
         let verified = verifier.verify(&proof).unwrap_or(false);
         assert!(!verified, "Corrupted proof must not verify");
     }
@@ -322,18 +344,20 @@ mod tests {
     #[test]
     fn test_post_quantum_verify_invalid_signature() {
         let prover = PostQuantumProver::new(42).unwrap();
-        
+
         let state_before = [1u8; 32];
         let state_after = [2u8; 32];
         let trace = b"trace";
-        
-        let mut proof = prover.prove(&state_before, &state_after, 100_000, &[3u8; 32], trace).unwrap();
-        
+
+        let mut proof = prover
+            .prove(&state_before, &state_after, 100_000, &[3u8; 32], trace)
+            .unwrap();
+
         // Corrupt the proof (change state_after)
         if proof.len() > 32 {
             proof[32] ^= 0xFF; // flip bits in state_after
         }
-        
+
         let verifier = PostQuantumVerifier::new(99).unwrap();
         let verified = verifier.verify(&proof).unwrap_or(false);
         // Corrupted proof might still deserialize, so this is lenient
@@ -351,14 +375,22 @@ mod tests {
             let state_before = [i as u8; 32];
             let state_after = [(i + 1) as u8; 32];
             let trace = format!("trace_{i}").into_bytes();
-            
-            let proof = prover.prove(&state_before, &state_after, 21_000 + i as u64 * 1_000, 
-                                     &[i as u8 + 10; 32], &trace)
+
+            let proof = prover
+                .prove(
+                    &state_before,
+                    &state_after,
+                    21_000 + i as u64 * 1_000,
+                    &[i as u8 + 10; 32],
+                    &trace,
+                )
                 .expect("proof generation failed");
             proofs.push(proof);
         }
 
-        let results = verifier.verify_batch(&proofs).expect("batch verification failed");
+        let results = verifier
+            .verify_batch(&proofs)
+            .expect("batch verification failed");
         assert_eq!(results.len(), 3);
         assert!(results.iter().all(|&ok| ok), "All batch proofs must verify");
     }
@@ -374,16 +406,18 @@ mod tests {
         let proof2 = ExecutionProof::new(&state_before, &state_after, 100_000, &[3u8; 32], trace2);
 
         // Different traces produce different commitments
-        assert_ne!(proof1.proof_commitment, proof2.proof_commitment, 
-                   "Different trace hashes must produce different commitments");
+        assert_ne!(
+            proof1.proof_commitment, proof2.proof_commitment,
+            "Different trace hashes must produce different commitments"
+        );
     }
 
     #[test]
     fn test_verifier_rejects_wrong_length_proof() {
         let verifier = PostQuantumVerifier::new(42).unwrap();
-        
+
         const PROOF_LEN: usize = 32 + 32 + 8 + 32 + 32 + 32; // 168 bytes
-        
+
         // Proof that's too short
         let short_proof = vec![0u8; 100];
         let result = verifier.verify(&short_proof).unwrap_or(false);
@@ -403,7 +437,7 @@ mod tests {
         for (state_before, gas) in states.iter().zip(gas_amounts.iter()) {
             let state_after = [(*gas as u8) + 1; 32];
             let proof = ExecutionProof::new(state_before, &state_after, *gas, &[0u8; 32], b"trace");
-            
+
             assert_eq!(proof.state_root_before, *state_before);
             assert_eq!(proof.state_root_after, state_after);
             assert_eq!(proof.gas_used, *gas);
@@ -413,13 +447,18 @@ mod tests {
     #[test]
     fn test_post_quantum_multiple_verifiers_consistent() {
         let prover = PostQuantumProver::new(12345).unwrap();
-        let proof = prover.prove(&[1u8; 32], &[2u8; 32], 50_000, &[3u8; 32], b"trace").unwrap();
+        let proof = prover
+            .prove(&[1u8; 32], &[2u8; 32], 50_000, &[3u8; 32], b"trace")
+            .unwrap();
 
         // Multiple verifiers with same seed should all verify the same proof
         for _ in 0..3 {
             let verifier = PostQuantumVerifier::new(12345).unwrap();
             let verified = verifier.verify(&proof).unwrap();
-            assert!(verified, "All verifiers with same seed must verify same proof");
+            assert!(
+                verified,
+                "All verifiers with same seed must verify same proof"
+            );
         }
     }
 }
