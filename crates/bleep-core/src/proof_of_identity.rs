@@ -1,5 +1,5 @@
-use sha3::{Sha3_256, Digest};
 use serde::{Deserialize, Serialize};
+use sha3::{Digest, Sha3_256};
 
 /// Hash-based Merkle path for identity verification (post-quantum secure)
 #[derive(Clone, Debug, Serialize, Deserialize)]

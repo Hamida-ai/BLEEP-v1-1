@@ -1,5 +1,5 @@
 //! post-quantum proof system.
-//! 
+//!
 //! Transparent hash-based proofs with SPHINCS+ signatures for post-quantum security.
 //! No trusted setup. Zero compromise on security or auditability.
 //!
@@ -9,18 +9,18 @@
 //!   3. Proof = (trace_root || constraint_check_sig || transcript_hash)
 //!   4. Verification: replay constraints, verify Merkle paths, check SPHINCS+ sig
 
-use sha3::{Digest, Sha3_256};
-use serde::{Deserialize, Serialize};
-use tracing::{debug, info, warn};
-use std::collections::BTreeMap;
 use bincode;
+use serde::{Deserialize, Serialize};
+use sha3::{Digest, Sha3_256};
+use std::collections::BTreeMap;
+use tracing::{debug, info, warn};
 
 // =================================================================================================
 // PROOF TYPES
 // =================================================================================================
 
 /// Post-quantum transparent proof replacing Groth16.
-/// 
+///
 /// No trusted setup. Security based on:
 ///   - SHA3-256 hash collision resistance (classical)
 ///   - SPHINCS+-SHAKE-256 signature security (post-quantum)
@@ -28,17 +28,17 @@ use bincode;
 pub struct PostQuantumProof {
     /// Root of trace Merkle tree
     pub trace_root: [u8; 32],
-    
+
     /// Deterministic transcript of all computations
     pub transcript: Vec<u8>,
-    
+
     /// SPHINCS+ signature over (trace_root || transcript_hash())
     /// Proves prover knows secret key corresponding to validator_pk
     pub signature_bytes: Vec<u8>,
-    
+
     /// Merkle paths for boundary assertions (sparse inclusion proofs)
     pub merkle_paths: Vec<MerklePath>,
-    
+
     /// Proof generation time (milliseconds)
     pub prove_time_ms: u64,
 }
@@ -58,20 +58,23 @@ pub struct MerklePath {
 impl PostQuantumProof {
     /// Serialize to bytes
     pub fn to_bytes(&self) -> Result<Vec<u8>, String> {
-        bincode::serialize(self)
-            .map_err(|e| format!("Serialization failed: {e}"))
+        bincode::serialize(self).map_err(|e| format!("Serialization failed: {e}"))
     }
 
     /// Deserialize from bytes
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, String> {
-        bincode::deserialize(bytes)
-            .map_err(|e| format!("Deserialization failed: {e}"))
+        bincode::deserialize(bytes).map_err(|e| format!("Deserialization failed: {e}"))
     }
 
     /// Proof size in bytes
     pub fn size_bytes(&self) -> usize {
-        32 + self.transcript.len() + self.signature_bytes.len()
-            + self.merkle_paths.iter().map(|p| 64 + p.path.len() * 32).sum::<usize>()
+        32 + self.transcript.len()
+            + self.signature_bytes.len()
+            + self
+                .merkle_paths
+                .iter()
+                .map(|p| 64 + p.path.len() * 32)
+                .sum::<usize>()
     }
 }
 
@@ -80,7 +83,7 @@ impl PostQuantumProof {
 // =================================================================================================
 
 /// Replaces Groth16 block validity proof.
-/// 
+///
 /// Proves a block header is valid without revealing private witnesses.
 pub struct BlockValidityProof;
 
@@ -101,11 +104,11 @@ impl BlockValidityProof {
         // Rows = computation steps, Columns = state variables
         // For block validity: 2 columns × 8 rows minimum
         let mut trace = BTreeMap::new();
-        
+
         // Row 0: Initial state
         trace.insert((0, 0), block_index.to_le_bytes().to_vec());
         trace.insert((0, 1), epoch_id.to_le_bytes().to_vec());
-        
+
         // Rows 1-7: Transition constraints applied
         for step in 1usize..8 {
             let prev_idx = (step - 1) as u64;
@@ -144,7 +147,7 @@ impl BlockValidityProof {
         // Create signature over trace_root || transcript
         let mut sig_preimage = trace_root.to_vec();
         sig_preimage.extend_from_slice(&transcript);
-        
+
         let transcript_hash: [u8; 32] = {
             let mut h = Sha3_256::new();
             h.update(&sig_preimage);
@@ -161,25 +164,21 @@ impl BlockValidityProof {
         // Build Merkle paths for assertions (boundary constraints)
         let mut path_value_0 = [0u8; 32];
         path_value_0[..8].copy_from_slice(&block_index.to_le_bytes());
-        
+
         let mut path_value_1 = [0u8; 32];
         path_value_1[..8].copy_from_slice(&epoch_id.to_le_bytes());
-        
+
         let merkle_paths = vec![
             MerklePath {
                 column: 0,
                 row: 0,
-                path: vec![
-                    Self::merkle_sibling(&trace, 0, 0, 8),
-                ],
+                path: vec![Self::merkle_sibling(&trace, 0, 0, 8)],
                 value: path_value_0,
             },
             MerklePath {
                 column: 1,
                 row: 0,
-                path: vec![
-                    Self::merkle_sibling(&trace, 0, 1, 8),
-                ],
+                path: vec![Self::merkle_sibling(&trace, 0, 1, 8)],
                 value: path_value_1,
             },
         ];
@@ -211,21 +210,15 @@ impl BlockValidityProof {
         validator_pk_hash: &[u8; 31],
     ) -> Result<bool, String> {
         // 1. Verify transcript contains expected public inputs
-        let merkle_found = proof
-            .transcript
-            .windows(31)
-            .any(|w| w == merkle_root_hash);
-        
+        let merkle_found = proof.transcript.windows(31).any(|w| w == merkle_root_hash);
+
         if !merkle_found {
             debug!("Merkle root hash not found in proof transcript");
             return Ok(false);
         }
 
-        let validator_found = proof
-            .transcript
-            .windows(31)
-            .any(|w| w == validator_pk_hash);
-        
+        let validator_found = proof.transcript.windows(31).any(|w| w == validator_pk_hash);
+
         if !validator_found {
             debug!("Validator PK hash not found in proof transcript");
             return Ok(false);
@@ -246,7 +239,10 @@ impl BlockValidityProof {
         // 4. Verify Merkle paths are well-formed (for transparency)
         for path in &proof.merkle_paths {
             if path.path.is_empty() {
-                debug!("Merkle path for column {} row {} is empty", path.column, path.row);
+                debug!(
+                    "Merkle path for column {} row {} is empty",
+                    path.column, path.row
+                );
                 return Ok(false);
             }
         }
@@ -291,10 +287,10 @@ impl L3TransferProof {
         // Build trace: represent transfer as state machine
         // State = (balance_src, balance_dest, nonce)
         let mut trace = Vec::new();
-        
+
         // Initial state
         trace.push([0u8; 32]); // Initial commitment
-        
+
         // Transition: valid transfer
         let mut h = Sha3_256::new();
         h.update(intent_id);
@@ -325,7 +321,10 @@ impl L3TransferProof {
 
         let prove_time_ms = start.elapsed().as_millis() as u64;
 
-        info!("Generated post-quantum L3 transfer proof ({}ms)", prove_time_ms);
+        info!(
+            "Generated post-quantum L3 transfer proof ({}ms)",
+            prove_time_ms
+        );
 
         Ok(PostQuantumProof {
             trace_root,
@@ -343,7 +342,10 @@ impl L3TransferProof {
         source_root: &[u8; 32],
         dest_root: &[u8; 32],
     ) -> Result<bool, String> {
-        debug!("Verifying post-quantum L3 transfer proof for intent {}", hex::encode(intent_id));
+        debug!(
+            "Verifying post-quantum L3 transfer proof for intent {}",
+            hex::encode(intent_id)
+        );
 
         // Verify intent_id is in transcript
         if !proof.transcript.windows(32).any(|w| w == intent_id) {
@@ -416,7 +418,10 @@ impl ExecutionProof {
 
         let prove_time_ms = start.elapsed().as_millis() as u64;
 
-        info!("Generated post-quantum execution proof ({}ms, gas={})", prove_time_ms, gas_used);
+        info!(
+            "Generated post-quantum execution proof ({}ms, gas={})",
+            prove_time_ms, gas_used
+        );
 
         Ok(PostQuantumProof {
             trace_root,
@@ -486,14 +491,7 @@ mod tests {
         )
         .unwrap();
 
-        let result = BlockValidityProof::verify(
-            &proof,
-            1,
-            0,
-            3,
-            &[0xAAu8; 31],
-            &[0xBBu8; 31],
-        );
+        let result = BlockValidityProof::verify(&proof, 1, 0, 3, &[0xAAu8; 31], &[0xBBu8; 31]);
 
         assert!(result.is_ok(), "verify returned error");
         assert!(result.unwrap(), "proof verification failed");
@@ -528,7 +526,8 @@ mod tests {
         .unwrap();
 
         let serialized = proof.to_bytes().expect("Serialization failed");
-        let deserialized = PostQuantumProof::from_bytes(&serialized).expect("Deserialization failed");
+        let deserialized =
+            PostQuantumProof::from_bytes(&serialized).expect("Deserialization failed");
 
         assert_eq!(deserialized.trace_root, proof.trace_root);
         assert_eq!(deserialized.signature_bytes, proof.signature_bytes);

@@ -1,6 +1,6 @@
 use bleep_crypto::quantum_secure::QuantumSecure;
-use serde::{Serialize, Deserialize};
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 // Re-export these from bleep_p2p once available
@@ -15,7 +15,10 @@ pub struct P2PNotImplementedError;
 
 impl std::fmt::Display for P2PNotImplementedError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "P2P networking not yet integrated (Phase 0: Crypto only)")
+        write!(
+            f,
+            "P2P networking not yet integrated (Phase 0: Crypto only)"
+        )
     }
 }
 
@@ -24,7 +27,10 @@ impl std::error::Error for P2PNotImplementedError {}
 impl PeerManager {
     /// Add transaction to pool
     /// Currently unimplemented - P2P integration pending
-    pub async fn add_transaction_to_pool(&self, _tx: ZKTransaction) -> Result<(), P2PNotImplementedError> {
+    pub async fn add_transaction_to_pool(
+        &self,
+        _tx: ZKTransaction,
+    ) -> Result<(), P2PNotImplementedError> {
         Err(P2PNotImplementedError)
     }
 }
@@ -32,7 +38,10 @@ impl PeerManager {
 impl GossipProtocol {
     /// Broadcast message to network
     /// Currently unimplemented - P2P integration pending
-    pub async fn broadcast_message(&self, _message: P2PMessage) -> Result<(), P2PNotImplementedError> {
+    pub async fn broadcast_message(
+        &self,
+        _message: P2PMessage,
+    ) -> Result<(), P2PNotImplementedError> {
         Err(P2PNotImplementedError)
     }
 }
@@ -40,13 +49,21 @@ impl GossipProtocol {
 impl MultiHopRouting {
     /// Select a route for message
     /// Currently unimplemented - P2P integration pending
-    pub async fn select_route(&self, _sender: &str, _receiver: &str) -> Result<Vec<String>, P2PNotImplementedError> {
+    pub async fn select_route(
+        &self,
+        _sender: &str,
+        _receiver: &str,
+    ) -> Result<Vec<String>, P2PNotImplementedError> {
         Err(P2PNotImplementedError)
     }
 
     /// Forward message along route
     /// Currently unimplemented - P2P integration pending
-    pub async fn forward_message(&self, _route: Vec<String>, _message: P2PMessage) -> Result<(), P2PNotImplementedError> {
+    pub async fn forward_message(
+        &self,
+        _route: Vec<String>,
+        _message: P2PMessage,
+    ) -> Result<(), P2PNotImplementedError> {
         Err(P2PNotImplementedError)
     }
 }
@@ -54,13 +71,20 @@ impl MultiHopRouting {
 impl DarkRouting {
     /// Select anonymous route
     /// Currently unimplemented - P2P integration pending
-    pub async fn select_anonymous_route(&self, _sender: &str) -> Result<Vec<String>, P2PNotImplementedError> {
+    pub async fn select_anonymous_route(
+        &self,
+        _sender: &str,
+    ) -> Result<Vec<String>, P2PNotImplementedError> {
         Err(P2PNotImplementedError)
     }
 
     /// Forward message anonymously
     /// Currently unimplemented - P2P integration pending
-    pub async fn forward_anonymous(&self, _route: Vec<String>, _message: P2PMessage) -> Result<(), P2PNotImplementedError> {
+    pub async fn forward_anonymous(
+        &self,
+        _route: Vec<String>,
+        _message: P2PMessage,
+    ) -> Result<(), P2PNotImplementedError> {
         Err(P2PNotImplementedError)
     }
 }
@@ -100,7 +124,10 @@ impl ZKTransaction {
 
     /// Verifies transaction validity using quantum-safe signatures (SPHINCS+)
     pub fn verify(&self, quantum_secure: &QuantumSecure) -> bool {
-        let data = format!("{}{}{}{}", self.sender, self.receiver, self.amount, self.timestamp);
+        let data = format!(
+            "{}{}{}{}",
+            self.sender, self.receiver, self.amount, self.timestamp
+        );
         quantum_secure.verify(data.as_bytes(), &self.signature)
     }
 }
@@ -110,7 +137,7 @@ impl ZKTransaction {
 pub enum ConsensusMessage {
     Propose,
     Vote,
-    Commit
+    Commit,
 }
 
 use crate::block::Block;
@@ -159,12 +186,20 @@ impl TransactionManager {
     }
 
     /// Routes a transaction securely over multiple hops
-    pub async fn route_transaction(&self, sender: &str, receiver: &str, transaction: ZKTransaction) {
+    pub async fn route_transaction(
+        &self,
+        sender: &str,
+        receiver: &str,
+        transaction: ZKTransaction,
+    ) {
         let route = match self.multi_hop_routing.select_route(sender, receiver).await {
             Ok(r) => r,
             Err(_) => return,
         };
-        let _ = self.multi_hop_routing.forward_message(route, P2PMessage::Transaction(transaction)).await;
+        let _ = self
+            .multi_hop_routing
+            .forward_message(route, P2PMessage::Transaction(transaction))
+            .await;
     }
 
     /// Sends a fully anonymous transaction using DarkRouting
@@ -173,7 +208,10 @@ impl TransactionManager {
             Ok(r) => r,
             Err(_) => return,
         };
-        let _ = self.dark_routing.forward_anonymous(route, P2PMessage::Transaction(transaction)).await;
+        let _ = self
+            .dark_routing
+            .forward_anonymous(route, P2PMessage::Transaction(transaction))
+            .await;
     }
 
     /// Processes incoming P2P transaction messages
@@ -186,7 +224,7 @@ impl TransactionManager {
                 } else {
                     println!("❌ Invalid transaction rejected.");
                 }
-            },
+            }
             _ => {}
         }
     }

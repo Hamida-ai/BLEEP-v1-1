@@ -14,34 +14,31 @@ use std::collections::HashMap;
 use std::fmt;
 use std::time::Instant;
 
-use bleep_connect_layer3_zkproof::{
-    ProofGenerator, ProofVerifier,
-    ProofInput,
-};
+use bleep_connect_layer3_zkproof::{ProofGenerator, ProofInput, ProofVerifier};
 use bleep_connect_types::{BleepConnectResult, ProofType};
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-pub const L3_PROOF_SIZE_BYTES:    usize = 192;
-pub const L3_BATCH_SIZE:          usize = 32;
-pub const L3_VERIFICATION_GAS:    u64   = 250_000;
-pub const L3_MAX_LATENCY_SECS:    u64   = 30;
-pub const L3_SEPOLIA_CONTRACT:    &str  = "0xBLEEPL3Bridge_Sepolia_Testnet";
+pub const L3_PROOF_SIZE_BYTES: usize = 192;
+pub const L3_BATCH_SIZE: usize = 32;
+pub const L3_VERIFICATION_GAS: u64 = 250_000;
+pub const L3_MAX_LATENCY_SECS: u64 = 30;
+pub const L3_SEPOLIA_CONTRACT: &str = "0xBLEEPL3Bridge_Sepolia_Testnet";
 
 // ── BridgeIntentL3 ────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
 pub struct BridgeIntentL3 {
-    pub intent_id:     [u8; 32],
-    pub source_chain:  Chain,
-    pub dest_chain:    Chain,
-    pub sender:        String,
-    pub recipient:     String,
-    pub amount:        u128,
-    pub token:         String,
-    pub nonce:         u64,
-    pub state:         L3State,
-    pub proof:         Option<ZkBridgeProof>,
+    pub intent_id: [u8; 32],
+    pub source_chain: Chain,
+    pub dest_chain: Chain,
+    pub sender: String,
+    pub recipient: String,
+    pub amount: u128,
+    pub token: String,
+    pub nonce: u64,
+    pub state: L3State,
+    pub proof: Option<ZkBridgeProof>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,10 +63,10 @@ pub enum Chain {
 impl fmt::Display for Chain {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Bleep            => write!(f, "bleep-testnet-1"),
-            Self::EthereumSepolia  => write!(f, "ethereum-sepolia"),
-            Self::EthereumMainnet  => write!(f, "ethereum-mainnet"),
-            Self::Solana           => write!(f, "solana-mainnet"),
+            Self::Bleep => write!(f, "bleep-testnet-1"),
+            Self::EthereumSepolia => write!(f, "ethereum-sepolia"),
+            Self::EthereumMainnet => write!(f, "ethereum-mainnet"),
+            Self::Solana => write!(f, "solana-mainnet"),
         }
     }
 }
@@ -81,13 +78,13 @@ impl fmt::Display for Chain {
 #[derive(Debug, Clone)]
 pub struct ZkBridgeProof {
     /// Real proof bytes in the bridge's serialized proof format.
-    pub proof_bytes:   Vec<u8>,
+    pub proof_bytes: Vec<u8>,
     /// Serialized public inputs used during proof generation.
     pub public_inputs: Vec<Vec<u8>>,
-    pub srs_id:        String,
-    pub batch_ids:     Vec<[u8; 32]>,
+    pub srs_id: String,
+    pub batch_ids: Vec<[u8; 32]>,
     pub prove_time_ms: u64,
-    pub(crate) inner:  bleep_connect_types::ZKProof,
+    pub(crate) inner: bleep_connect_types::ZKProof,
 }
 
 impl ZkBridgeProof {
@@ -100,12 +97,12 @@ impl ZkBridgeProof {
 // ── L3BatchProver ─────────────────────────────────────────────────────────────
 
 pub struct L3BatchProver {
-    pub srs_id:       String,
-    pending_batch:    Vec<[u8; 32]>,
+    pub srs_id: String,
+    pending_batch: Vec<[u8; 32]>,
     proofs_generated: u64,
-    total_prove_ms:   u64,
-    generator:        ProofGenerator,
-    verifier:         ProofVerifier,
+    total_prove_ms: u64,
+    generator: ProofGenerator,
+    verifier: ProofVerifier,
 }
 
 impl L3BatchProver {
@@ -114,10 +111,10 @@ impl L3BatchProver {
         let verifier = ProofVerifier::new()?;
 
         Ok(Self {
-            srs_id:           srs_id.into(),
-            pending_batch:    Vec::new(),
+            srs_id: srs_id.into(),
+            pending_batch: Vec::new(),
             proofs_generated: 0,
-            total_prove_ms:   0,
+            total_prove_ms: 0,
             generator,
             verifier,
         })
@@ -133,9 +130,11 @@ impl L3BatchProver {
     pub fn prove_batch(
         &mut self,
         source_root: [u8; 32],
-        dest_root:   [u8; 32],
+        dest_root: [u8; 32],
     ) -> Option<ZkBridgeProof> {
-        if self.pending_batch.is_empty() { return None; }
+        if self.pending_batch.is_empty() {
+            return None;
+        }
 
         let batch_ids: Vec<[u8; 32]> = self.pending_batch.drain(..).collect();
         let wall_start = Instant::now();
@@ -151,59 +150,75 @@ impl L3BatchProver {
         }
 
         let input = ProofInput {
-            intent_id:             primary_intent,
-            proof_type:            ProofType::ExecutionCompleted,
-            source_state_root:     source_root,
-            dest_tx_hash:          dest_root,
-            min_dest_amount:       0,
+            intent_id: primary_intent,
+            proof_type: ProofType::ExecutionCompleted,
+            source_state_root: source_root,
+            dest_tx_hash: dest_root,
+            min_dest_amount: 0,
             dest_amount_delivered: 0,
-            executor_bytes:        vec![],
+            executor_bytes: vec![],
             escrow_preimage,
-            executor_nonce:        batch_ids.len() as u64,
+            executor_nonce: batch_ids.len() as u64,
         };
 
         let inner = self.generator.generate_proof(&input).ok()?;
 
         let prove_time_ms = wall_start.elapsed().as_millis() as u64;
-        self.total_prove_ms  += prove_time_ms;
+        self.total_prove_ms += prove_time_ms;
         self.proofs_generated += 1;
 
         Some(ZkBridgeProof {
-            proof_bytes:   inner.proof_bytes.clone(),
+            proof_bytes: inner.proof_bytes.clone(),
             public_inputs: inner.public_inputs.clone(),
-            srs_id:        self.srs_id.clone(),
+            srs_id: self.srs_id.clone(),
             batch_ids,
             prove_time_ms,
             inner,
         })
     }
 
-    pub fn proofs_generated(&self) -> u64 { self.proofs_generated }
-    pub fn avg_prove_ms(&self) -> u64 {
-        if self.proofs_generated == 0 { 0 } else { self.total_prove_ms / self.proofs_generated }
+    pub fn proofs_generated(&self) -> u64 {
+        self.proofs_generated
     }
-    pub fn verifier(&self) -> &ProofVerifier { &self.verifier }
+    pub fn avg_prove_ms(&self) -> u64 {
+        if self.proofs_generated == 0 {
+            0
+        } else {
+            self.total_prove_ms / self.proofs_generated
+        }
+    }
+    pub fn verifier(&self) -> &ProofVerifier {
+        &self.verifier
+    }
 }
 
 // ── Layer3Bridge ──────────────────────────────────────────────────────────────
 
 pub struct Layer3Bridge {
-    prover:   L3BatchProver,
-    intents:  HashMap<[u8; 32], BridgeIntentL3>,
-    next_id:  u64,
+    prover: L3BatchProver,
+    intents: HashMap<[u8; 32], BridgeIntentL3>,
+    next_id: u64,
 }
 
 impl Layer3Bridge {
     pub fn new(srs_id: &str) -> BleepConnectResult<Self> {
         let prover = L3BatchProver::new(srs_id)?;
-        Ok(Self { prover, intents: HashMap::new(), next_id: 1 })
+        Ok(Self {
+            prover,
+            intents: HashMap::new(),
+            next_id: 1,
+        })
     }
 
     pub fn initiate(
         &mut self,
-        source_chain: Chain, dest_chain: Chain,
-        sender: &str, recipient: &str,
-        amount: u128, token: &str, nonce: u64,
+        source_chain: Chain,
+        dest_chain: Chain,
+        sender: &str,
+        recipient: &str,
+        amount: u128,
+        token: &str,
+        nonce: u64,
     ) -> [u8; 32] {
         let mut id = [0u8; 32];
         let n = self.next_id;
@@ -212,17 +227,27 @@ impl Layer3Bridge {
             *b = ((n >> (i % 8 * 8)) & 0xFF) as u8;
         }
         let intent = BridgeIntentL3 {
-            intent_id: id, source_chain, dest_chain,
-            sender: sender.into(), recipient: recipient.into(),
-            amount, token: token.into(), nonce,
-            state: L3State::Initiated, proof: None,
+            intent_id: id,
+            source_chain,
+            dest_chain,
+            sender: sender.into(),
+            recipient: recipient.into(),
+            amount,
+            token: token.into(),
+            nonce,
+            state: L3State::Initiated,
+            proof: None,
         };
         self.prover.enqueue(id);
         self.intents.insert(id, intent);
         id
     }
 
-    pub fn flush_batch(&mut self, source_root: [u8; 32], dest_root: [u8; 32]) -> Option<ZkBridgeProof> {
+    pub fn flush_batch(
+        &mut self,
+        source_root: [u8; 32],
+        dest_root: [u8; 32],
+    ) -> Option<ZkBridgeProof> {
         let proof = self.prover.prove_batch(source_root, dest_root)?;
         for intent_id in &proof.batch_ids {
             if let Some(intent) = self.intents.get_mut(intent_id) {
@@ -235,9 +260,11 @@ impl Layer3Bridge {
     pub fn submit_proof(&mut self, intent_id: &[u8; 32], proof: ZkBridgeProof) -> bool {
         let intent = match self.intents.get_mut(intent_id) {
             Some(i) => i,
-            None    => return false,
+            None => return false,
         };
-        if intent.state != L3State::ProofReady { return false; }
+        if intent.state != L3State::ProofReady {
+            return false;
+        }
         if proof.verify(self.prover.verifier()) {
             intent.state = L3State::Verified;
             intent.proof = Some(proof);
@@ -262,43 +289,64 @@ impl Layer3Bridge {
         self.intents.get(id).map(|i| &i.state)
     }
     pub fn pending_count(&self) -> usize {
-        self.intents.values()
-            .filter(|i| matches!(i.state, L3State::Initiated | L3State::ProofGenerating | L3State::ProofReady))
+        self.intents
+            .values()
+            .filter(|i| {
+                matches!(
+                    i.state,
+                    L3State::Initiated | L3State::ProofGenerating | L3State::ProofReady
+                )
+            })
             .count()
     }
     pub fn finalized_count(&self) -> usize {
-        self.intents.values().filter(|i| i.state == L3State::Finalized).count()
+        self.intents
+            .values()
+            .filter(|i| i.state == L3State::Finalized)
+            .count()
     }
-    pub fn total_intents(&self) -> usize { self.intents.len() }
+    pub fn total_intents(&self) -> usize {
+        self.intents.len()
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct L3IntentStatusResp {
-    pub intent_id:     String,
-    pub state:         String,
-    pub source_chain:  String,
-    pub dest_chain:    String,
-    pub amount:        u128,
-    pub token:         String,
+    pub intent_id: String,
+    pub state: String,
+    pub source_chain: String,
+    pub dest_chain: String,
+    pub amount: u128,
+    pub token: String,
     pub prove_time_ms: Option<u64>,
-    pub proof_size:    Option<usize>,
+    pub proof_size: Option<usize>,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn dummy_root(seed: u8) -> [u8; 32] { [seed; 32] }
+    fn dummy_root(seed: u8) -> [u8; 32] {
+        [seed; 32]
+    }
 
     #[test]
     fn layer3_full_flow_bleep_to_sepolia() {
-        let mut bridge = Layer3Bridge::new("powers-of-tau-bls12-381-bleep-v1").expect("Bridge initialization failed");
+        let mut bridge = Layer3Bridge::new("powers-of-tau-bls12-381-bleep-v1")
+            .expect("Bridge initialization failed");
         let id = bridge.initiate(
-            Chain::Bleep, Chain::EthereumSepolia,
-            "bleep:testnet:alice", "0xAliceOnSepolia",
-            1_000_000_000, "BLEEP", 1);
+            Chain::Bleep,
+            Chain::EthereumSepolia,
+            "bleep:testnet:alice",
+            "0xAliceOnSepolia",
+            1_000_000_000,
+            "BLEEP",
+            1,
+        );
         assert_eq!(bridge.intent_state(&id), Some(&L3State::Initiated));
-        let proof = bridge.flush_batch(dummy_root(0xAA), dummy_root(0xBB)).unwrap();
+        let proof = bridge
+            .flush_batch(dummy_root(0xAA), dummy_root(0xBB))
+            .unwrap();
         assert_eq!(bridge.intent_state(&id), Some(&L3State::ProofReady));
         assert!(!proof.proof_bytes.is_empty());
         assert!(bridge.submit_proof(&id, proof));
@@ -326,10 +374,18 @@ mod tests {
     #[test]
     fn submit_without_proof_ready_fails() {
         let mut bridge = Layer3Bridge::new("test-srs").expect("Bridge initialization failed");
-        let id = bridge.initiate(Chain::Bleep, Chain::EthereumSepolia, "a", "b", 100, "BLEEP", 1);
+        let id = bridge.initiate(
+            Chain::Bleep,
+            Chain::EthereumSepolia,
+            "a",
+            "b",
+            100,
+            "BLEEP",
+            1,
+        );
         let mut prover = L3BatchProver::new("test-srs");
         prover.enqueue(id);
-        let proof = prover.prove_batch([0xAA;32], [0xBB;32]).unwrap();
+        let proof = prover.prove_batch([0xAA; 32], [0xBB; 32]).unwrap();
         assert!(!bridge.submit_proof(&id, proof));
     }
 }

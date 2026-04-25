@@ -573,6 +573,7 @@ validator_id      = "validator-0"
 | `BLEEP_STATE_DIR` | `/tmp/bleep-state` | Local RocksDB path |
 | `BLEEP_WALLET_PASSWORD` | (empty) | Wallet decryption passphrase |
 | `RUST_LOG` | `info` | tracing log filter |
+| `SEPOLIA_BLEEP_FULFILL_ADDR` | (required) | Ethereum Sepolia contract address for BLEEP fulfillment relay |
 
 Cargo feature flags: `mainnet` (on by default), `testnet`, `onnx` (enables `tract-onnx` for ONNX inference).
 

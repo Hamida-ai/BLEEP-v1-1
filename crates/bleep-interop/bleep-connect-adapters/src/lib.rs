@@ -7,17 +7,18 @@
 //! - `get_finality_blocks`: Return the number of confirmations needed for finality
 
 use std::collections::HashMap;
+use std::env;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use serde::de::DeserializeOwned;
+use serde_json::json;
 use sha2::Sha256;
-use sha3::{Keccak256, Digest};
+use sha3::{Digest, Keccak256};
 use tracing::debug;
 
-use bleep_connect_types::{
-    InstantIntent, ChainId, BleepConnectError, BleepConnectResult,
-};
 use bleep_connect_crypto::sha256;
+use bleep_connect_types::{BleepConnectError, BleepConnectResult, ChainId, InstantIntent};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CHAIN ADAPTER TRAIT
@@ -30,7 +31,11 @@ pub trait ChainAdapter: Send + Sync {
 
     /// Verify that a transfer was executed correctly on the destination chain.
     /// `execution_proof` is the bytes returned by `encode_transfer` plus execution evidence.
-    fn verify_execution(&self, intent: &InstantIntent, execution_proof: &[u8]) -> BleepConnectResult<bool>;
+    fn verify_execution(
+        &self,
+        intent: &InstantIntent,
+        execution_proof: &[u8],
+    ) -> BleepConnectResult<bool>;
 
     /// Return the number of block confirmations needed for finality on this chain.
     fn get_finality_blocks(&self) -> u64;
@@ -74,7 +79,11 @@ impl EthereumAdapter {
         let mut selector = [0u8; 4];
         selector.copy_from_slice(&hash[..4]);
 
-        Self { chain, finality_blocks: finality, fulfill_selector: selector }
+        Self {
+            chain,
+            finality_blocks: finality,
+            fulfill_selector: selector,
+        }
     }
 
     /// ABI-encode a uint256 (big-endian, left-padded to 32 bytes).
@@ -113,7 +122,11 @@ impl ChainAdapter for EthereumAdapter {
         Ok(calldata)
     }
 
-    fn verify_execution(&self, intent: &InstantIntent, execution_proof: &[u8]) -> BleepConnectResult<bool> {
+    fn verify_execution(
+        &self,
+        intent: &InstantIntent,
+        execution_proof: &[u8],
+    ) -> BleepConnectResult<bool> {
         // Verify: proof must start with our selector, contain the intent ID, and
         // the delivered amount (encoded in bytes 68..84) must meet minimum.
         if execution_proof.len() < 68 {
@@ -134,9 +147,15 @@ impl ChainAdapter for EthereumAdapter {
         Ok(true)
     }
 
-    fn get_finality_blocks(&self) -> u64 { self.finality_blocks }
-    fn chain_id(&self) -> ChainId { self.chain }
-    fn native_decimals(&self) -> u8 { 18 }
+    fn get_finality_blocks(&self) -> u64 {
+        self.finality_blocks
+    }
+    fn chain_id(&self) -> ChainId {
+        self.chain
+    }
+    fn native_decimals(&self) -> u8 {
+        18
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -146,7 +165,9 @@ impl ChainAdapter for EthereumAdapter {
 pub struct BitcoinAdapter;
 
 impl BitcoinAdapter {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 
     /// Encode as Bitcoin Script HTLC (Hash Time-Lock Contract):
     /// OP_IF <executor_pubkey> OP_CHECKSIG OP_ELSE <timeout> OP_CHECKLOCKTIMEVERIFY OP_DROP <refund_pubkey> OP_CHECKSIG OP_ENDIF
@@ -154,11 +175,11 @@ impl BitcoinAdapter {
         let mut script = Vec::new();
         // OP_SHA256 <hash> OP_EQUALVERIFY (simplified; production uses full P2SH/SegWit)
         script.push(0xa8); // OP_SHA256
-        script.push(32);   // push 32 bytes
+        script.push(32); // push 32 bytes
         script.extend_from_slice(&intent_hash);
         script.push(0x88); // OP_EQUALVERIFY
         script.push(0xac); // OP_CHECKSIG
-        // Encode timeout as 4-byte little-endian
+                           // Encode timeout as 4-byte little-endian
         script.extend_from_slice(&timeout_blocks.to_le_bytes());
         script
     }
@@ -182,7 +203,11 @@ impl ChainAdapter for BitcoinAdapter {
         Ok(out)
     }
 
-    fn verify_execution(&self, intent: &InstantIntent, execution_proof: &[u8]) -> BleepConnectResult<bool> {
+    fn verify_execution(
+        &self,
+        intent: &InstantIntent,
+        execution_proof: &[u8],
+    ) -> BleepConnectResult<bool> {
         // Minimum: version byte + 2-byte script len + at least 1 byte script + 8 bytes amount
         if execution_proof.len() < 12 {
             return Ok(false);
@@ -204,9 +229,15 @@ impl ChainAdapter for BitcoinAdapter {
         Ok(false)
     }
 
-    fn get_finality_blocks(&self) -> u64 { 6 }
-    fn chain_id(&self) -> ChainId { ChainId::Bitcoin }
-    fn native_decimals(&self) -> u8 { 8 }
+    fn get_finality_blocks(&self) -> u64 {
+        6
+    }
+    fn chain_id(&self) -> ChainId {
+        ChainId::Bitcoin
+    }
+    fn native_decimals(&self) -> u8 {
+        8
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -216,7 +247,9 @@ impl ChainAdapter for BitcoinAdapter {
 pub struct SolanaAdapter;
 
 impl SolanaAdapter {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 
     /// Encode as Solana instruction data for the BLEEP Connect program.
     /// Layout: [discriminator(8)] [intent_id(32)] [recipient(32)] [amount(8)]
@@ -252,7 +285,11 @@ impl ChainAdapter for SolanaAdapter {
         Ok(self.encode_instruction(intent))
     }
 
-    fn verify_execution(&self, intent: &InstantIntent, execution_proof: &[u8]) -> BleepConnectResult<bool> {
+    fn verify_execution(
+        &self,
+        intent: &InstantIntent,
+        execution_proof: &[u8],
+    ) -> BleepConnectResult<bool> {
         if execution_proof.len() < 80 {
             return Ok(false);
         }
@@ -264,9 +301,15 @@ impl ChainAdapter for SolanaAdapter {
         Ok(&execution_proof[8..40] == &intent_id)
     }
 
-    fn get_finality_blocks(&self) -> u64 { 32 }
-    fn chain_id(&self) -> ChainId { ChainId::Solana }
-    fn native_decimals(&self) -> u8 { 9 }
+    fn get_finality_blocks(&self) -> u64 {
+        32
+    }
+    fn chain_id(&self) -> ChainId {
+        ChainId::Solana
+    }
+    fn native_decimals(&self) -> u8 {
+        9
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -278,9 +321,15 @@ pub struct CosmosAdapter {
 }
 
 impl CosmosAdapter {
-    pub fn new(chain: ChainId) -> Self { Self { chain } }
+    pub fn new(chain: ChainId) -> Self {
+        Self { chain }
+    }
     /// Default constructor — uses ChainId::Cosmos.
-    pub fn default_cosmos() -> Self { Self { chain: ChainId::Cosmos } }
+    pub fn default_cosmos() -> Self {
+        Self {
+            chain: ChainId::Cosmos,
+        }
+    }
 
     /// Encode as Cosmos SDK MsgExecuteContract JSON bytes.
     fn encode_msg(&self, intent: &InstantIntent) -> Vec<u8> {
@@ -302,16 +351,27 @@ impl ChainAdapter for CosmosAdapter {
         Ok(self.encode_msg(intent))
     }
 
-    fn verify_execution(&self, intent: &InstantIntent, execution_proof: &[u8]) -> BleepConnectResult<bool> {
-        let proof_str = std::str::from_utf8(execution_proof)
-            .map_err(|_| BleepConnectError::InternalError("Invalid UTF-8 in Cosmos proof".into()))?;
+    fn verify_execution(
+        &self,
+        intent: &InstantIntent,
+        execution_proof: &[u8],
+    ) -> BleepConnectResult<bool> {
+        let proof_str = std::str::from_utf8(execution_proof).map_err(|_| {
+            BleepConnectError::InternalError("Invalid UTF-8 in Cosmos proof".into())
+        })?;
         let expected_id = hex::encode(intent.calculate_id());
         Ok(proof_str.contains(&expected_id))
     }
 
-    fn get_finality_blocks(&self) -> u64 { 1 } // Instant finality on Cosmos
-    fn chain_id(&self) -> ChainId { self.chain }
-    fn native_decimals(&self) -> u8 { 6 }
+    fn get_finality_blocks(&self) -> u64 {
+        1
+    } // Instant finality on Cosmos
+    fn chain_id(&self) -> ChainId {
+        self.chain
+    }
+    fn native_decimals(&self) -> u8 {
+        6
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -321,7 +381,9 @@ impl ChainAdapter for CosmosAdapter {
 pub struct BleepAdapter;
 
 impl BleepAdapter {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 #[async_trait]
@@ -339,7 +401,11 @@ impl ChainAdapter for BleepAdapter {
         Ok(out)
     }
 
-    fn verify_execution(&self, intent: &InstantIntent, execution_proof: &[u8]) -> BleepConnectResult<bool> {
+    fn verify_execution(
+        &self,
+        intent: &InstantIntent,
+        execution_proof: &[u8],
+    ) -> BleepConnectResult<bool> {
         if execution_proof.len() < 52 {
             return Ok(false);
         }
@@ -350,9 +416,15 @@ impl ChainAdapter for BleepAdapter {
         Ok(&execution_proof[4..36] == &intent_id)
     }
 
-    fn get_finality_blocks(&self) -> u64 { 1 }
-    fn chain_id(&self) -> ChainId { ChainId::BLEEP }
-    fn native_decimals(&self) -> u8 { 8 }
+    fn get_finality_blocks(&self) -> u64 {
+        1
+    }
+    fn chain_id(&self) -> ChainId {
+        ChainId::BLEEP
+    }
+    fn native_decimals(&self) -> u8 {
+        8
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -373,9 +445,13 @@ impl ChainAdapter for BleepAdapter {
 /// Sepolia testnet chain ID (EIP-155).
 pub const SEPOLIA_CHAIN_ID: u64 = 11_155_111;
 
-/// Deployed BleepFulfill contract on Sepolia.
-pub const SEPOLIA_BLEEP_FULFILL_ADDR: &str =
-    "0x4BleepFulfill0000000000000000000000000000S7"; // placeholder until live deploy
+/// Environment variable name for the deployed Sepolia BleepFulfill contract address.
+pub const SEPOLIA_BLEEP_FULFILL_ADDR_ENV: &str = "SEPOLIA_BLEEP_FULFILL_ADDR";
+
+/// Retrieve the configured Sepolia fulfillment contract address.
+pub fn get_sepolia_fulfill_address() -> BleepConnectResult<String> {
+    SepoliaRelay::default_contract_address()
+}
 
 /// Relay transaction ready for `eth_sendRawTransaction`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -404,11 +480,38 @@ pub enum RelayStatus {
     /// Tx not yet seen on-chain.
     Pending,
     /// Included in a block; waiting for finality (12 confirmations on Sepolia).
-    Confirming { block_number: u64, confirmations: u64 },
+    Confirming {
+        block_number: u64,
+        confirmations: u64,
+    },
     /// Finalized (≥12 confirmations).
     Finalized { block_number: u64, tx_hash: String },
     /// Reverted on-chain.
     Reverted { reason: String },
+}
+
+#[derive(serde::Deserialize)]
+#[allow(dead_code)]
+struct JsonRpcError {
+    code: i64,
+    message: String,
+    data: Option<serde_json::Value>,
+}
+
+#[derive(serde::Deserialize)]
+#[allow(dead_code)]
+struct JsonRpcResponse<T> {
+    jsonrpc: String,
+    id: u64,
+    result: Option<T>,
+    error: Option<JsonRpcError>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct TransactionReceipt {
+    #[serde(rename = "blockNumber")]
+    block_number: Option<String>,
+    status: Option<String>,
 }
 
 pub struct SepoliaRelay {
@@ -421,17 +524,67 @@ pub struct SepoliaRelay {
 
 impl SepoliaRelay {
     /// Create a `SepoliaRelay` pointing at the default public Sepolia RPC.
-    pub fn new() -> Self {
+    pub fn new() -> BleepConnectResult<Self> {
         Self::with_rpc("https://rpc.sepolia.org".to_string())
     }
 
     /// Create a `SepoliaRelay` with a custom RPC endpoint.
-    pub fn with_rpc(rpc_url: String) -> Self {
-        Self {
+    pub fn with_rpc(rpc_url: String) -> BleepConnectResult<Self> {
+        let contract_address = Self::default_contract_address()?;
+        Self::with_rpc_and_contract(rpc_url, contract_address)
+    }
+
+    /// Create a `SepoliaRelay` with an explicit contract address.
+    pub fn with_rpc_and_contract(
+        rpc_url: String,
+        contract_address: String,
+    ) -> BleepConnectResult<Self> {
+        let contract_address = Self::validate_contract_address(&contract_address)?;
+        Ok(Self {
             inner: EthereumAdapter::new(ChainId::Ethereum), // uses Ethereum ABI
             rpc_url,
-            contract_address: SEPOLIA_BLEEP_FULFILL_ADDR.to_string(),
+            contract_address,
+        })
+    }
+
+    /// Load the configured Sepolia BleepFulfill contract address from environment.
+    pub fn default_contract_address() -> BleepConnectResult<String> {
+        let address = env::var(SEPOLIA_BLEEP_FULFILL_ADDR_ENV).map_err(|_| {
+            BleepConnectError::InvalidAddress(format!(
+                "Environment variable {} is not set",
+                SEPOLIA_BLEEP_FULFILL_ADDR_ENV,
+            ))
+        })?;
+        Self::validate_contract_address(&address)
+    }
+
+    /// Public helper for retrieving the configured Sepolia contract address.
+    pub fn get_sepolia_fulfill_address() -> BleepConnectResult<String> {
+        Self::default_contract_address()
+    }
+
+    fn validate_contract_address(address: &str) -> BleepConnectResult<String> {
+        let cleaned = address.trim();
+        let hex_text = cleaned.strip_prefix("0x").unwrap_or(cleaned);
+        if hex_text.len() != 40 {
+            return Err(BleepConnectError::InvalidAddress(format!(
+                "Invalid Sepolia contract address length: {}",
+                address,
+            )));
         }
+        let bytes = hex::decode(hex_text).map_err(|_| {
+            BleepConnectError::InvalidAddress(format!(
+                "Invalid Sepolia contract address: {}",
+                address,
+            ))
+        })?;
+        if bytes.len() != 20 {
+            return Err(BleepConnectError::InvalidAddress(format!(
+                "Invalid Sepolia contract address: {}",
+                address,
+            )));
+        }
+        Ok(format!("0x{}", hex_text.to_lowercase()))
     }
 
     /// Build a `SepoliaRelayTx` ready for signing and broadcast.
@@ -442,22 +595,20 @@ impl SepoliaRelay {
         let calldata = self.inner.encode_transfer(intent)?;
         let data_hex = format!("0x{}", hex::encode(&calldata));
 
-        // Native ETH transfer: value = source_amount (in wei).
-        // ERC-20: value = 0 (the contract pulls tokens).
-        let value_wei = match intent.source_asset.asset_type {
-            bleep_connect_types::AssetType::Native => intent.source_amount,
-            _ => 0u128,
-        };
+        if intent.dest_asset.asset_type != bleep_connect_types::AssetType::Native {
+            return Err(BleepConnectError::InternalError(
+                "Sepolia relay only supports native ETH destination transfers".into(),
+            ));
+        }
+
+        let value_wei = intent.source_amount;
 
         Ok(SepoliaRelayTx {
             to: self.contract_address.clone(),
             data: data_hex,
             value: format!("0x{:x}", value_wei),
-            // 150 000 gas covers a standard fulfillIntent call
             gas: "0x249f0".to_string(),
-            // 10 gwei max fee on Sepolia
             max_fee_per_gas: "0x2540be400".to_string(),
-            // 1 gwei priority fee
             max_priority_fee_per_gas: "0x3b9aca00".to_string(),
             chain_id: SEPOLIA_CHAIN_ID,
             nonce: None,
@@ -470,12 +621,25 @@ impl SepoliaRelay {
     /// Returns `Ok(true)` if the simulation passes.
     pub fn simulate_relay(&self, intent: &InstantIntent) -> BleepConnectResult<bool> {
         let calldata = self.inner.encode_transfer(intent)?;
-        // Local verification: re-decode intent_id from calldata[4..36]
-        if calldata.len() < 4 + 32 * 4 {
-            return Err(BleepConnectError::InternalError("Calldata too short".into()));
+        if calldata.len() != 4 + 32 * 4 {
+            return Err(BleepConnectError::InternalError(
+                "Calldata too short".into(),
+            ));
         }
-        // Selector check: bytes [0..4]
-        // Amount check: bytes [4+64 .. 4+96] (third parameter = min_dest_amount)
+
+        let raw_intent_id = &calldata[4..36];
+        if raw_intent_id != intent.calculate_id() {
+            return Err(BleepConnectError::InternalError(
+                "Simulated intent ID mismatch".into(),
+            ));
+        }
+
+        if intent.dest_asset.asset_type != bleep_connect_types::AssetType::Native {
+            return Err(BleepConnectError::InternalError(
+                "Sepolia relay only supports native ETH destination transfers".into(),
+            ));
+        }
+
         let raw_amount = &calldata[4 + 64..4 + 96];
         let mut amt = [0u8; 16];
         amt.copy_from_slice(&raw_amount[16..]);
@@ -485,35 +649,121 @@ impl SepoliaRelay {
                 "Simulated amount below minimum".into(),
             ));
         }
+
         Ok(true)
     }
 
-    /// Map an Ethereum tx hash to a `RelayStatus`.
-    ///
-    /// This is a deterministic mapping used for devnet testing.
-    /// Production replaces this with a real `eth_getTransactionReceipt` call.
-    pub fn relay_status(&self, tx_hash: &str) -> RelayStatus {
-        // Deterministic devnet heuristic: hashes starting with 0xff… → finalized.
-        if tx_hash.starts_with("0xff") {
-            RelayStatus::Finalized {
-                block_number: 5_000_000,
-                tx_hash: tx_hash.to_string(),
-            }
-        } else if tx_hash.starts_with("0x00") {
-            RelayStatus::Reverted {
-                reason: "execution reverted: BleepFulfill: intent already filled".into(),
-            }
+    /// Query Sepolia for the current status of a relay transaction.
+    pub fn relay_status(&self, tx_hash: &str) -> BleepConnectResult<RelayStatus> {
+        let tx_hash = tx_hash.trim();
+        let tx_hash = if tx_hash.starts_with("0x") {
+            tx_hash.to_string()
         } else {
-            RelayStatus::Confirming {
-                block_number: 5_000_001,
-                confirmations: 4,
+            format!("0x{}", tx_hash)
+        };
+
+        let receipt: Option<TransactionReceipt> =
+            self.rpc_request("eth_getTransactionReceipt", json!([tx_hash]))?;
+        let receipt = match receipt {
+            Some(receipt) => receipt,
+            None => return Ok(RelayStatus::Pending),
+        };
+
+        let status = receipt.status.ok_or_else(|| {
+            BleepConnectError::NetworkError("Sepolia receipt missing status field".into())
+        })?;
+
+        let block_number = receipt.block_number.ok_or_else(|| {
+            BleepConnectError::NetworkError("Sepolia receipt missing blockNumber".into())
+        })?;
+        let block_number = Self::parse_hex_u64(&block_number)?;
+
+        match status.as_str() {
+            "0x1" => {
+                let latest_block = Self::parse_hex_u64(
+                    &self.rpc_request::<String>("eth_blockNumber", json!([]))?,
+                )?;
+                let confirmations = latest_block.saturating_sub(block_number).saturating_add(1);
+                if confirmations >= 12 {
+                    Ok(RelayStatus::Finalized {
+                        block_number,
+                        tx_hash,
+                    })
+                } else {
+                    Ok(RelayStatus::Confirming {
+                        block_number,
+                        confirmations,
+                    })
+                }
             }
+            "0x0" => Ok(RelayStatus::Reverted {
+                reason: "Transaction reverted on Sepolia".into(),
+            }),
+            _ => Err(BleepConnectError::NetworkError(format!(
+                "Unexpected Sepolia receipt status: {}",
+                status,
+            ))),
         }
     }
-}
 
-impl Default for SepoliaRelay {
-    fn default() -> Self { Self::new() }
+    fn rpc_request<T: DeserializeOwned>(
+        &self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> BleepConnectResult<T> {
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": method,
+            "params": params,
+        });
+
+        let payload = serde_json::to_string(&request).map_err(|err| {
+            BleepConnectError::NetworkError(format!(
+                "Failed to serialize Sepolia RPC request: {}",
+                err,
+            ))
+        })?;
+
+        let response = ureq::post(&self.rpc_url)
+            .set("Content-Type", "application/json")
+            .send_string(&payload)
+            .map_err(|err| {
+                BleepConnectError::NetworkError(format!("Sepolia RPC request failed: {}", err,))
+            })?;
+
+        let body = response.into_string().map_err(|err| {
+            BleepConnectError::NetworkError(format!(
+                "Failed to read Sepolia RPC response body: {}",
+                err,
+            ))
+        })?;
+
+        let rpc: JsonRpcResponse<T> = serde_json::from_str(&body).map_err(|err| {
+            BleepConnectError::NetworkError(format!(
+                "Failed to decode Sepolia RPC response: {}",
+                err,
+            ))
+        })?;
+
+        if let Some(error) = rpc.error {
+            return Err(BleepConnectError::NetworkError(format!(
+                "Sepolia RPC error {}: {}",
+                error.code, error.message,
+            )));
+        }
+
+        rpc.result.ok_or_else(|| {
+            BleepConnectError::NetworkError("Sepolia RPC returned null result".into())
+        })
+    }
+
+    fn parse_hex_u64(value: &str) -> BleepConnectResult<u64> {
+        let cleaned = value.strip_prefix("0x").unwrap_or(value);
+        u64::from_str_radix(cleaned, 16).map_err(|_| {
+            BleepConnectError::InternalError(format!("Failed to parse hex integer: {}", value))
+        })
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -526,7 +776,9 @@ pub struct AdapterRegistry {
 
 impl AdapterRegistry {
     pub fn new() -> Self {
-        let mut reg = Self { adapters: HashMap::new() };
+        let mut reg = Self {
+            adapters: HashMap::new(),
+        };
 
         // Register all built-in adapters
         reg.register(Arc::new(EthereumAdapter::new(ChainId::Ethereum)));
@@ -558,7 +810,9 @@ impl AdapterRegistry {
 }
 
 impl Default for AdapterRegistry {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
@@ -568,7 +822,10 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn now() -> u64 {
-        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
     }
 
     fn make_intent(dest: ChainId) -> InstantIntent {
@@ -583,14 +840,17 @@ mod tests {
             source_amount: 1_000_000_000,
             min_dest_amount: 950_000_000,
             sender: UniversalAddress::new(ChainId::BLEEP, "bleep1abc".into()),
-            recipient: UniversalAddress::new(dest, match dest {
-                ChainId::Ethereum => "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef".into(),
-                ChainId::Bitcoin => "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4".into(),
-                ChainId::Solana => "7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV".into(),
-                ChainId::Cosmos => "cosmos1qnk2n4nlkpw9xfqntladh74er2xa62wgas".into(),
-                ChainId::BLEEP => "bleep1recipient".into(),
-                _ => "recipient".into(),
-            }),
+            recipient: UniversalAddress::new(
+                dest,
+                match dest {
+                    ChainId::Ethereum => "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef".into(),
+                    ChainId::Bitcoin => "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4".into(),
+                    ChainId::Solana => "7EcDhSYGxXyscszYEp35KHN8vvw3svAuLKTzXwCFLtV".into(),
+                    ChainId::Cosmos => "cosmos1qnk2n4nlkpw9xfqntladh74er2xa62wgas".into(),
+                    ChainId::BLEEP => "bleep1recipient".into(),
+                    _ => "recipient".into(),
+                },
+            ),
             max_solver_reward_bps: 50,
             slippage_tolerance_bps: 100,
             nonce: 1,
@@ -646,7 +906,11 @@ mod tests {
 
     #[test]
     fn test_sepolia_relay_build_tx() {
-        let relay = SepoliaRelay::new();
+        let relay = SepoliaRelay::with_rpc_and_contract(
+            "https://rpc.sepolia.org".to_string(),
+            "0x1234567890abcdef1234567890abcdef12345678".to_string(),
+        )
+        .unwrap();
         let intent = make_intent(ChainId::Ethereum);
         let tx = relay.build_relay_tx(&intent).unwrap();
         assert_eq!(tx.chain_id, SEPOLIA_CHAIN_ID);
@@ -656,26 +920,85 @@ mod tests {
     }
 
     #[test]
+    fn test_sepolia_relay_with_contract_address() {
+        let relay = SepoliaRelay::with_rpc_and_contract(
+            "https://rpc.sepolia.org".to_string(),
+            "0x1234567890abcdef1234567890abcdef12345678".to_string(),
+        )
+        .unwrap();
+        assert_eq!(
+            relay.contract_address,
+            "0x1234567890abcdef1234567890abcdef12345678"
+        );
+    }
+
+    #[test]
     fn test_sepolia_relay_simulate() {
-        let relay = SepoliaRelay::new();
+        let relay = SepoliaRelay::with_rpc_and_contract(
+            "https://rpc.sepolia.org".to_string(),
+            "0x1234567890abcdef1234567890abcdef12345678".to_string(),
+        )
+        .unwrap();
         let intent = make_intent(ChainId::Ethereum);
         assert!(relay.simulate_relay(&intent).unwrap());
     }
 
     #[test]
-    fn test_sepolia_relay_status() {
-        let relay = SepoliaRelay::new();
-        assert!(matches!(relay.relay_status("0xffaabbcc"), RelayStatus::Finalized { .. }));
-        assert!(matches!(relay.relay_status("0x00112233"), RelayStatus::Reverted { .. }));
-        assert!(matches!(relay.relay_status("0xabcdef01"), RelayStatus::Confirming { .. }));
+    fn test_sepolia_relay_status_local_rpc() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        use std::thread;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = thread::spawn(move || {
+            for _ in 0..2 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut buf = [0u8; 4096];
+                let n = stream.read(&mut buf).unwrap();
+                let request = String::from_utf8_lossy(&buf[..n]);
+                let response = if request.contains("eth_getTransactionReceipt") {
+                    r#"{"jsonrpc":"2.0","id":1,"result":{"blockNumber":"0x5","status":"0x1"}}"#
+                } else {
+                    r#"{"jsonrpc":"2.0","id":1,"result":"0x13"}"#
+                };
+                let body = response;
+                let header = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                    body.len()
+                );
+                stream.write_all(header.as_bytes()).unwrap();
+                stream.write_all(body.as_bytes()).unwrap();
+            }
+        });
+
+        let relay = SepoliaRelay::with_rpc_and_contract(
+            format!("http://{}", addr),
+            "0x1234567890abcdef1234567890abcdef12345678".to_string(),
+        )
+        .unwrap();
+
+        let status = relay.relay_status("0xabcdef").unwrap();
+        assert!(matches!(status, RelayStatus::Finalized { .. }));
+        server.join().unwrap();
     }
 
     #[test]
     fn test_adapter_registry() {
         let registry = AdapterRegistry::new();
-        for chain in [ChainId::Ethereum, ChainId::Bitcoin, ChainId::Solana,
-                      ChainId::Cosmos, ChainId::BLEEP, ChainId::Arbitrum] {
-            assert!(registry.get(chain).is_some(), "Missing adapter for {:?}", chain);
+        for chain in [
+            ChainId::Ethereum,
+            ChainId::Bitcoin,
+            ChainId::Solana,
+            ChainId::Cosmos,
+            ChainId::BLEEP,
+            ChainId::Arbitrum,
+        ] {
+            assert!(
+                registry.get(chain).is_some(),
+                "Missing adapter for {:?}",
+                chain
+            );
         }
     }
 }

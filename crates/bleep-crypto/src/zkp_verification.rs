@@ -1,10 +1,10 @@
+use crate::logging::BLEEPLogger;
+use crate::merkletree::MerkleTree;
+use crate::quantum_secure::KyberAESHybrid;
+use sha2::{Digest, Sha256};
+use sha3::Sha3_256;
 use std::fs;
 use thiserror::Error;
-use sha2::{Sha256, Digest};
-use sha3::Sha3_256;
-use crate::quantum_secure::KyberAESHybrid;
-use crate::merkletree::MerkleTree;
-use crate::logging::BLEEPLogger;
 
 /// Initialize the ZKP subsystem for production-safe startup.
 pub fn init_zkp_systems() -> Result<(), Box<dyn std::error::Error>> {
@@ -64,12 +64,11 @@ impl BLEEPZKPModule {
     }
 
     /// Initialize ZKP module with secure key material.
-    pub fn from_keys(
-        proving_key: Vec<u8>,
-        verifying_key: Vec<u8>,
-    ) -> Result<Self, BLEEPError> {
+    pub fn from_keys(proving_key: Vec<u8>, verifying_key: Vec<u8>) -> Result<Self, BLEEPError> {
         if proving_key.is_empty() || verifying_key.is_empty() {
-            return Err(BLEEPError::Generic("Proving or verifying key material is empty".into()));
+            return Err(BLEEPError::Generic(
+                "Proving or verifying key material is empty".into(),
+            ));
         }
 
         Ok(Self {
@@ -135,22 +134,25 @@ impl BLEEPZKPModule {
     ///   2. Decrypt with `KyberAESHybrid::decrypt(node_kyber_sk, ciphertext)`.
     ///   3. Deserialise with the deployed proof format's canonical deserializer.
     ///   4. Verify integrity checksum.
-    pub fn load_keys(
-        proving_key_path: &str,
-        verifying_key_path: &str,
-    ) -> Result<Self, BLEEPError> {
+    pub fn load_keys(proving_key_path: &str, verifying_key_path: &str) -> Result<Self, BLEEPError> {
         // Validate that the key files exist and are non-empty before attempting
         // to deserialise. This gives a clear error message rather than a
         // confusing deserialisation failure.
-        let pk_bytes = fs::read(proving_key_path).map_err(|e| BLEEPError::Generic(
-            format!("Cannot read proving key at '{}': {}. \
-                     Run key generation first.", proving_key_path, e)
-        ))?;
+        let pk_bytes = fs::read(proving_key_path).map_err(|e| {
+            BLEEPError::Generic(format!(
+                "Cannot read proving key at '{}': {}. \
+                     Run key generation first.",
+                proving_key_path, e
+            ))
+        })?;
 
-        let vk_bytes = fs::read(verifying_key_path).map_err(|e| BLEEPError::Generic(
-            format!("Cannot read verifying key at '{}': {}. \
-                     Run key generation first.", verifying_key_path, e)
-        ))?;
+        let vk_bytes = fs::read(verifying_key_path).map_err(|e| {
+            BLEEPError::Generic(format!(
+                "Cannot read verifying key at '{}': {}. \
+                     Run key generation first.",
+                verifying_key_path, e
+            ))
+        })?;
 
         if pk_bytes.is_empty() || vk_bytes.is_empty() {
             return Err(BLEEPError::Generic(
@@ -173,7 +175,8 @@ impl BLEEPZKPModule {
             return Err(BLEEPError::Generic(
                 "Development-only placeholder keys detected. \
                  These MUST NOT be used in production. \
-                 Generate real proof system keys and store them encrypted.".to_string()
+                 Generate real proof system keys and store them encrypted."
+                    .to_string(),
             ));
         }
 
@@ -183,7 +186,7 @@ impl BLEEPZKPModule {
         Err(BLEEPError::Generic(
             "ZKP key deserialisation not yet implemented for this key format. \
              See load_keys() documentation for the production integration path."
-            .to_string()
+                .to_string(),
         ))
     }
 
@@ -253,9 +256,8 @@ impl BLEEPZKPModule {
 /// Verify a raw proof payload encoded as a hex string.
 pub fn verify_proof(proof_hex: &str) -> Result<bool, BLEEPError> {
     let normalized = proof_hex.strip_prefix("0x").unwrap_or(proof_hex);
-    let proof_bytes = hex::decode(normalized).map_err(|e| BLEEPError::Generic(
-        format!("Invalid proof hex encoding: {e}")
-    ))?;
+    let proof_bytes = hex::decode(normalized)
+        .map_err(|e| BLEEPError::Generic(format!("Invalid proof hex encoding: {e}")))?;
 
     if proof_bytes.is_empty() {
         return Ok(false);
