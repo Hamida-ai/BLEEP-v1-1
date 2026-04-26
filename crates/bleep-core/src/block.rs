@@ -30,7 +30,8 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 
-// bleep_crypto::tx_signer used by InboundBlockHandler in main.rs (not directly in block.rs)
+// Transaction signature helpers used by block compaction and validation.
+use bleep_crypto::tx_signer::{tx_payload, verify_tx_signature};
 use bleep_crypto::pq_crypto::SignatureScheme;
 use pqcrypto_sphincsplus::sphincsshake256fsimple;
 use pqcrypto_traits::sign::{DetachedSignature as _, SecretKey as _};
@@ -55,12 +56,89 @@ pub struct Transaction {
     pub signature: Vec<u8>,
 }
 
+impl Transaction {
+    /// Compute the canonical transaction hash used for compact-block propagation.
+    pub fn tx_hash(&self) -> [u8; 32] {
+        let mut h = Sha3_256::new();
+        h.update(self.sender.as_bytes());
+        h.update(self.receiver.as_bytes());
+        h.update(&self.amount.to_le_bytes());
+        h.update(&self.timestamp.to_le_bytes());
+        h.finalize().into()
+    }
+
+    /// Verify the SPHINCS+ transaction signature.
+    pub fn verify_signature(&self) -> bool {
+        if self.signature.is_empty() {
+            return true; // Legacy / genesis transactions without signatures are accepted.
+        }
+        if self.signature.len() < SPHINCS_PK_LEN {
+            return false;
+        }
+        let pk_bytes = &self.signature[..SPHINCS_PK_LEN];
+        let sig_bytes = &self.signature[SPHINCS_PK_LEN..];
+        let payload = tx_payload(&self.sender, &self.receiver, self.amount, self.timestamp);
+        verify_tx_signature(&payload, sig_bytes, pk_bytes)
+    }
+}
+
 /// Consensus mode enumeration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ConsensusMode {
     PosNormal,
     PbftFastFinality,
     EmergencyPow,
+}
+
+/// Minimal block header used for compact-block gossip.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlockHeader {
+    pub index: u64,
+    pub timestamp: u64,
+    pub previous_hash: String,
+    pub merkle_root: String,
+    pub validator_signature: Vec<u8>,
+    pub zk_proof: Vec<u8>,
+    pub epoch_id: u64,
+    pub consensus_mode: ConsensusMode,
+    pub protocol_version: u32,
+    pub shard_registry_root: String,
+    pub shard_id: u64,
+    pub shard_state_root: String,
+}
+
+/// CompactBlock contains only the block header and the transaction hashes.
+/// Peers can fetch missing transactions by hash without re-broadcasting the
+/// full 32MB transaction payload.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompactBlock {
+    pub header: BlockHeader,
+    pub tx_hashes: Vec<[u8; 32]>,
+}
+
+impl BlockHeader {
+    pub fn from_block(block: &Block) -> Self {
+        Self {
+            index: block.index,
+            timestamp: block.timestamp,
+            previous_hash: block.previous_hash.clone(),
+            merkle_root: block.merkle_root.clone(),
+            validator_signature: block.validator_signature.clone(),
+            zk_proof: block.zk_proof.clone(),
+            epoch_id: block.epoch_id,
+            consensus_mode: block.consensus_mode,
+            protocol_version: block.protocol_version,
+            shard_registry_root: block.shard_registry_root.clone(),
+            shard_id: block.shard_id,
+            shard_state_root: block.shard_state_root.clone(),
+        }
+    }
+}
+
+impl CompactBlock {
+    pub fn tx_count(&self) -> usize {
+        self.tx_hashes.len()
+    }
 }
 
 /// BLEEP block header — consensus + shard fields.
@@ -145,6 +223,14 @@ impl Block {
             shard_registry_root,
             shard_id,
             shard_state_root,
+        }
+    }
+
+    /// Produce a compact representation of this block suitable for gossip.
+    pub fn compact(&self) -> CompactBlock {
+        CompactBlock {
+            header: BlockHeader::from_block(self),
+            tx_hashes: self.transactions.iter().map(|tx| tx.tx_hash()).collect(),
         }
     }
 

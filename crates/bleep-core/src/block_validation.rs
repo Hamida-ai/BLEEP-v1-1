@@ -1,4 +1,5 @@
-use crate::block::Block;
+use crate::block::{Block, Transaction};
+use rayon::prelude::*;
 
 pub struct BlockValidator;
 
@@ -37,7 +38,23 @@ impl BlockValidator {
             return false;
         }
 
+        // Verify all transaction signatures in parallel to avoid sequential DoS.
+        if !Self::verify_transaction_signatures(&block.transactions) {
+            log::error!(
+                "Block {} contains invalid transaction signatures",
+                block.index
+            );
+            return false;
+        }
+
         true
+    }
+
+    pub fn verify_transaction_signatures(transactions: &[Transaction]) -> bool {
+        transactions
+            .par_iter()
+            .map(|tx| tx.verify_signature())
+            .all(|valid| valid)
     }
 
     /// **AI-based anomaly detection for malicious blocks**

@@ -147,12 +147,20 @@ impl StateManager {
     }
 
     /// Advance block counter, sync dirty accounts into trie, flush to RocksDB.
+    ///
+    /// Write-batching is used here: all pending account updates are kept in
+    /// memory until block completion, then persisted in a single RocksDB batch.
     pub fn advance_block(&mut self) {
-        self.sync_trie();
         self.block_height += 1;
-        if let Err(e) = self.flush_internal() {
+        if let Err(e) = self.commit_block() {
             log::error!("[StateManager] flush failed on advance_block: {}", e);
         }
+    }
+
+    /// Commit all pending in-memory state changes for the current block.
+    pub fn commit_block(&mut self) -> StateResult<()> {
+        self.sync_trie();
+        self.flush_internal()
     }
 
     // ── State root (Sparse Merkle Trie) ───────────────────────────────────────

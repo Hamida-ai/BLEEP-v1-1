@@ -308,7 +308,7 @@ pub struct AnomalyDetector {
 impl AnomalyDetector {
     pub fn new() -> Self {
         AnomalyDetector {
-            max_payload_bytes: 2 * 1024 * 1024, // 2 MiB
+            max_payload_bytes: 64 * 1024 * 1024, // 64 MiB temporary testnet gate
             max_hop_count: 64,
         }
     }
