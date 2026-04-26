@@ -48,6 +48,7 @@ linfa-nn = "0.7.2"
 ndarray = "0.15.6"
 bleep-crypto = { path = "../bleep-crypto" }
 bleep-p2p = { path = "../bleep-p2p" }
+rayon = "1.9"
 
 [dev-dependencies]
 tokio-test = "0.4.3"

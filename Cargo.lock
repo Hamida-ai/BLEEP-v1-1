@@ -1260,6 +1260,7 @@ dependencies = [
  "pqcrypto-sphincsplus",
  "pqcrypto-traits",
  "proptest",
+ "rayon",
  "serde",
  "serde_json",
  "sha2",

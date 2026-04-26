@@ -20,7 +20,7 @@ bleep-governance
 ├── governance_core         — Proposal, Vote, VoteTally, GovernanceEngine, GovernanceError
 ├── deterministic_executor  — Reproducible, auditable proposal execution
 ├── constitution            — Immutable base rules that constrain all proposals
-├── zk_voting               — ZKP-backed anonymous voting (Bulletproofs + Groth16)
+├── zk_voting               — ZKP-backed anonymous voting (Winterfell STARK, transparent)
 ├── proposal_lifecycle      — Submission → Voting → Quorum check → Execution
 ├── forkless_upgrades       — Live protocol parameter changes without hard forks
 ├── governance_binding      — Links governance decisions to bleep-state mutations

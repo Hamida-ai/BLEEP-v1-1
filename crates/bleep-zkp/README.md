@@ -93,7 +93,7 @@ Additional ZKP constructions designed for quantum-adversarial environments, used
 | `bleep-consensus` | Block validity attestation |
 | `bleep-governance` | Anonymous ZK vote verification |
 | `bleep-interop` | Cross-chain STARK proof relay (Layer 3) |
-| `bleep-crypto` | Combined with Groth16/Bulletproofs in `zkp_verification` |
+| `bleep-crypto` | Winterfell STARK integration in `zkp_verification` |
 | `bleep-vm` | ZK engine for contract ZK verification intents |
 
 ---

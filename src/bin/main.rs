@@ -83,7 +83,6 @@ use bleep_governance::governance_core::GovernanceEngine;
 
 // ── P2P ───────────────────────────────────────────────────────────────────────
 use bleep_core::block_validation::BlockValidator;
-use bleep_crypto::tx_signer::{tx_payload, verify_tx_signature};
 use bleep_p2p::p2p_node::{P2PNode, P2PNodeConfig};
 use bleep_p2p::types::MessageType;
 
@@ -586,35 +585,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
                         continue;
                     }
 
-                    // Per-transaction SPHINCS+ signature verification.
-                    // Reject the whole block if any tx carries an invalid signature.
-                    // Txs with an empty (legacy) signature are allowed for compatibility;
-                    // they will be signed going forward now that wallet signing is wired.
-                    let mut tx_sigs_ok = true;
-                    for tx in &block.transactions {
-                        if tx.signature.is_empty() {
-                            continue; // legacy / genesis tx — no sig required
-                        }
-                        // Reconstruct the canonical payload that was signed.
-                        let payload = tx_payload(&tx.sender, &tx.receiver, tx.amount, tx.timestamp);
-                        // The signature blob is [pk(var) || SPHINCS+_sig].
-                        // For our wallet tx signer the PK length is fixed at
-                        // the size stored in the wallet (variable by scheme).
-                        // We attempt verify_tx_signature with the full blob as
-                        // the sig; verify_tx_signature handles scheme dispatch.
-                        if !verify_tx_signature(&payload, &tx.signature, &tx.signature) {
-                            // Signature present but invalid — reject block
-                            warn!(
-                                "[InboundBlockHandler] Block {} tx {}→{} has invalid signature — discarding block",
-                                block.index, tx.sender, tx.receiver
-                            );
-                            tx_sigs_ok = false;
-                            break;
-                        }
-                    }
-                    if !tx_sigs_ok {
-                        continue;
-                    }
+                    // Transaction signature verification is now handled by BlockValidator
+                    // using Rayon to parallelize verification across all cores.
 
                     // Chain link validation against our tip
                     let already_have = {
