@@ -100,12 +100,12 @@ cargo run --bin bleep-rpc
 |------|---------|-------------|
 | `quantum` | ✅ on | SPHINCS+ / Kyber post-quantum crypto |
 | `mainnet` | ✅ on | Mainnet genesis parameters |
-| `testnet` | off | Testnet genesis parameters |
+| `pretestnet` | off | Pre-testnet genesis parameters |
 | `ml` | off | Phase 4 AI inference (requires trained models) |
 
 ```bash
-# Testnet build
-cargo build --workspace --no-default-features --features testnet,quantum
+# Pre-testnet build
+cargo build --workspace --no-default-features --features pretestnet,quantum
 
 # Without PQ crypto (faster dev builds)
 cargo build --workspace --no-default-features --features mainnet

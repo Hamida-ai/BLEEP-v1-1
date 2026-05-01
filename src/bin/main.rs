@@ -653,7 +653,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     info!("");
     info!("🚀 ════════════════════════════════════════════════════════════════");
     info!("   BLEEP Node LIVE — Protocol Hardened · Audit Complete · 10K TPS");
-    info!("   Protocol v3  |  Chain: bleep-testnet-1  |  10 shards  |  7 validators");
+    info!("   Protocol v3  |  Chain: bleep-pretestnet-1  |  10 shards  |  Participating validators");
     info!("══ Core RPC ═════════════════════════════════════════════════════════");
     info!("   Health:       http://0.0.0.0:8545/rpc/health");
     info!("   State:        http://0.0.0.0:8545/rpc/state/{{address}}");
@@ -675,7 +675,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     info!("   MPC Ceremony: http://0.0.0.0:8545/rpc/ceremony/status  ");
     info!("   Benchmark:    http://0.0.0.0:8545/rpc/benchmark/latest  ");
     info!("   Audit:        http://0.0.0.0:8545/rpc/audit/report  ");
-    info!("══ Testnet UI ════════════════════════════════════════════════════════");
+    info!("══ Pre-testnet UI ════════════════════════════════════════════════════════");
     info!("   Explorer:     http://0.0.0.0:8545/explorer");
     info!("   Faucet:       POST http://0.0.0.0:8545/faucet/{{address}}");
     info!("   Metrics:      http://0.0.0.0:8545/metrics");

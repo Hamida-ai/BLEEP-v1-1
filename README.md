@@ -1,6 +1,6 @@
 # BLEEP — Quantum Trust Network
 
-**Protocol Version 3 · `bleep-testnet-1`**
+**Protocol Version 3 · `bleep-pretestnet-1`**
 
 Every transaction on a classical blockchain is a permanent public record signed with a key that Shor's algorithm breaks in polynomial time. An adversary does not need a quantum computer today — they need storage. They archive now and decrypt when the hardware catches up. For a live chain with real economic value, that window closes exactly once.
 
@@ -47,7 +47,7 @@ Four parameters are enforced by Rust compile-time `const` assertions. A code cha
 | Maximum per-epoch inflation | 500 bps | `MAX_INFLATION_RATE_BPS` |
 | Fee burn floor | 2,500 bps | `FEE_BURN_BPS` |
 
-Testnet results (1-hour sustained, 10 shards, 7 validators, `bleep-testnet-1`):
+Pre-testnet pilot results (1-hour sustained, 10 shards, participating validators, `bleep-pretestnet-1`):
 
 ```
 avg TPS:         10,921   (target ≥ 10,000 — pass)
@@ -183,7 +183,7 @@ Five fuzz targets in `bleep-crypto/fuzz` run on every CI build: hash determinism
 
 Let V = {v₁…vₙ} be the active validator set at epoch e. Each validator holds a SPHINCS+ verification key, a Kyber-1024 encapsulation key, and stake sᵢ in microBLEEP. S = Σsᵢ.
 
-Safety holds when Byzantine stake f < S/3. Network model: partial synchrony. Safety holds under full asynchrony; liveness requires eventual delivery within Δ. The 3,000 ms slot timer is calibrated against observed testnet propagation latency.
+Safety holds when Byzantine stake f < S/3. Network model: partial synchrony. Safety holds under full asynchrony; liveness requires eventual delivery within Δ. The 3,000 ms slot timer is calibrated against observed pre-testnet pilot propagation latency.
 
 ### Block production
 
@@ -192,12 +192,12 @@ Each 3-second slot:
 1. Proposer selected with probability proportional to stake — deterministic, no coordinator.
 2. `BlockProducer` pulls up to 4,096 transactions from the mempool by fee in descending order and applies them to a draft state. Any transaction that causes an invariant violation — overdraft, nonce regression, supply cap breach — is evicted and the block rebuilt.
 3. Sparse Merkle Trie root committed to the block header.
-4. STARK `BlockValidityAir` proof generated (avg 1500 ms on testnet hardware). The circuit proves structural consistency and proposer possession. It does not prove full execution validity — every validator does that independently.
+4. STARK `BlockValidityAir` proof generated (avg 1500 ms on pre-testnet pilot hardware). The circuit proves structural consistency and proposer possession. It does not prove full execution validity — every validator does that independently.
 5. Block signed with SPHINCS+ and broadcast.
 6. Receiving validators verify the STARK proof, SPHINCS+ signature, and SMT root transition independently.
 7. Prevote then precommit — each message SPHINCS+-signed.
 8. Finalisation at > 6,667 bps of S. Irreversible — not probabilistic, not subject to rollback.
-9. Epoch boundary every 1,000 blocks (mainnet) / 100 blocks (testnet): validator rotation, reward distribution, slashing counter reset, governance events.
+9. Epoch boundary every 1,000 blocks (mainnet) / 100 blocks (pre-testnet): validator rotation, reward distribution, slashing counter reset, governance events.
 
 `ConsensusOrchestrator` selects mode deterministically at epoch boundaries — identical computation on every honest node, no coordinator required.
 
@@ -222,7 +222,7 @@ Balance debits use a RocksDB compare-and-swap loop (up to 3 retries), closing th
 
 ### Chaos suite results
 
-72-hour continuous run, 7-validator testnet, 14 scenarios:
+72-hour continuous run, participating validators pre-testnet pilot, 14 scenarios:
 
 | Scenario | Result |
 |---|---|
@@ -282,7 +282,7 @@ assert!(proof.verify(&known_state_root));
 
 ### Sharding
 
-10 shards on testnet. `ShardManager` routes by account address hash. Each shard is an independent RocksDB instance. `ShardValidatorAssignment` maps validators to shards per epoch using a deterministic function of the epoch randomness beacon.
+10 shards in pre-testnet pilot configuration. `ShardManager` routes by account address hash. Each shard is an independent RocksDB instance. `ShardValidatorAssignment` maps validators to shards per epoch using a deterministic function of the epoch randomness beacon.
 
 Cross-shard transactions go through `TwoPhaseCommitCoordinator`. The coordinator shard is derived from the transaction hash — no coordinator election. Stalled coordinators are force-aborted by `cross_shard_timeout_sweep` every 60 seconds. `ShardEpochBinding` commits each shard's root to the epoch Merkle tree at every boundary.
 
@@ -334,7 +334,7 @@ Onion routing uses AES-256-GCM keyed from Kyber-1024 per-hop shared secrets, up 
 
 `AIConstraintValidator` runs before a proposal enters the vote queue. A proposal that would push `MaxInflationBps` above 500 is rejected here and never reaches a vote. The `constitutional_violation_rejected_at_submission` test covers this on every CI build.
 
-Governance parameters on testnet:
+Governance parameters in pre-testnet pilot:
 
 | Parameter | Value |
 |---|---|
@@ -348,7 +348,7 @@ Governance parameters on testnet:
 
 `ForklessUpgradeEngine` activates hash-committed upgrades at epoch boundaries only. Validators know exactly what code will activate before casting a vote. `Version.is_valid_upgrade()` enforces monotonic version progression. Partial upgrade payloads are rejected atomically.
 
-`proposal-testnet-001` ran the full lifecycle on `bleep-testnet-1`: pre-flight, ZK votes from 7 validators, 70% quorum, on-chain execution at block 1,105. It reduced `FeeBurnBps` from 2,500 to 2,000.
+`proposal-pretestnet-001` ran the full lifecycle in pre-testnet pilot: pre-flight, ZK votes from participating validators, 70% quorum, on-chain execution at block 1,105. It reduced `FeeBurnBps` from 2,500 to 2,000.
 
 ---
 
@@ -563,7 +563,7 @@ log_level = "info"
 [consensus]
 block_interval_ms = 3000
 max_txs_per_block = 4096
-blocks_per_epoch  = 1000   # 100 on testnet
+blocks_per_epoch  = 1000   # 100 in pre-testnet pilot
 validator_id      = "validator-0"
 ```
 
@@ -575,7 +575,7 @@ validator_id      = "validator-0"
 | `RUST_LOG` | `info` | tracing log filter |
 | `SEPOLIA_BLEEP_FULFILL_ADDR` | (required) | Ethereum Sepolia contract address for BLEEP fulfillment relay |
 
-Cargo feature flags: `mainnet` (on by default), `testnet`, `onnx` (enables `tract-onnx` for ONNX inference).
+Cargo feature flags: `mainnet` (on by default), `pretestnet`, `onnx` (enables `tract-onnx` for ONNX inference).
 
 ---
 
@@ -785,10 +785,10 @@ Full report: `docs/SECURITY_AUDIT_SPRINT9.md`
 | Phase | Status | Definition of done |
 |---|---|---|
 | 1 — Foundation | ✅ Complete | 19-crate workspace compiles; post-quantum crypto active; STARK proofs (transparent, no trusted setup); 4-node devnet; Tier 4 live on Sepolia |
-| 2 — Testnet Alpha | ✅ Complete | 7-validator `bleep-testnet-1`; public faucet; block explorer; full CI pipeline |
+| 2 — Pre-testnet Pilot | ✅ Complete | Participating validators `bleep-pretestnet-1`; public faucet; block explorer; full CI pipeline |
 | 3 — Hardening | ✅ Complete | Security audit (all Critical/High resolved); 72-hour chaos suite; 5-participant MPC; ≥ 10,000 TPS benchmark |
 | 4 — AI Training | ⏳ Active | `DeterministicInferenceEngine` passes determinism suite; governance pre-flight ≥ 95% accuracy on constitutional violations |
-| 5 — Public Testnet | ⏳ Upcoming | ≥ 50 validators; ≥ 6 continents; 30 consecutive days without manual intervention |
+| 5 — Public Pre-testnet | ⏳ Upcoming | ≥ 50 validators; ≥ 6 continents; 30 consecutive days without manual intervention |
 | 6 — Pre-Sale / ICO | ⏳ Upcoming | ICO complete; all vesting contracts deployed and verified on-chain |
 | 7 — Mainnet | 🔜 Planned | ≥ 21 validators; governance active from block 1; BLEEP Connect Tier 1–4 live on Ethereum and Solana; NTP guard active; `GenesisAllocation` contracts deployed |
 
@@ -817,7 +817,7 @@ MIT OR Apache-2.0, at your option. See [LICENSE](LICENSE).
 
 ---
 
-*BLEEP · Quantum Trust Network · Protocol Version 3 · `bleep-testnet-1`*
+*BLEEP · Quantum Trust Network · Protocol Version 3 · `bleep-pretestnet-1`*
 
 *This document describes Protocol Version 3. It is not financial or investment advice. Protocol parameters may change before mainnet deployment.*├── bleep-interop/        # BLEEP Connect — 10 sub-crates, 4 bridge tiers
 │   ├── bleep-connect-types
@@ -905,7 +905,7 @@ Five fuzz targets run on every CI build: hash determinism, sign/verify round-tri
 
 Let V = {v₁…vₙ} be the active validator set at epoch e. Each validator holds a SPHINCS+ verification key, a Kyber-1024 encapsulation key, and a stake sᵢ in microBLEEP. S = Σsᵢ.
 
-Safety holds when Byzantine stake f < S/3 — this is the stake-weighted BFT bound, not a participant count. The network model is partial synchrony: safety holds under full asynchrony, liveness requires eventual delivery within Δ. The 3,000 ms slot timer is calibrated against observed testnet propagation latency.
+Safety holds when Byzantine stake f < S/3 — this is the stake-weighted BFT bound, not a participant count. The network model is partial synchrony: safety holds under full asynchrony, liveness requires eventual delivery within Δ. The 3,000 ms slot timer is calibrated against observed pre-testnet pilot propagation latency.
 
 ### Block production
 
@@ -919,7 +919,7 @@ Each 3-second slot:
 6. Receiving validators verify STARK proof + SPHINCS+ signature + SMT root transition independently.
 7. Prevote, then precommit — each message SPHINCS+-signed.
 8. Finalisation at > 6,667 bps of S. Irreversible.
-9. Epoch boundary every 1,000 blocks (mainnet) / 100 blocks (testnet): validator rotation, reward distribution, slashing counter reset, governance events.
+9. Epoch boundary every 1,000 blocks (mainnet) / 100 blocks (pre-testnet): validator rotation, reward distribution, slashing counter reset, governance events.
 
 `ConsensusOrchestrator` selects the mode deterministically at epoch boundaries — the same computation on every honest node. It doesn't coordinate; it computes.
 
@@ -986,7 +986,7 @@ assert!(proof.verify(&known_state_root));
 
 ### Sharding
 
-10 shards in testnet configuration (`NUM_SHARDS`). `ShardManager` routes by account address hash. Each shard is an independent RocksDB instance. `ShardValidatorAssignment` maps validators to shards per epoch using a deterministic function of the epoch randomness beacon — no privileged authority in the loop.
+10 shards in pre-testnet pilot configuration (`NUM_SHARDS`). `ShardManager` routes by account address hash. Each shard is an independent RocksDB instance. `ShardValidatorAssignment` maps validators to shards per epoch using a deterministic function of the epoch randomness beacon — no privileged authority in the loop.
 
 Cross-shard transactions go through `TwoPhaseCommitCoordinator`. The coordinator shard is derived from the transaction hash, eliminating coordinator election entirely. Stalled coordinators are force-aborted by `cross_shard_timeout_sweep` every 60 seconds. `ShardEpochBinding` commits each shard's state root to the epoch Merkle tree at every boundary.
 
@@ -1038,7 +1038,7 @@ Proposal lifecycle: **Submit → AIConstraintValidator pre-flight → Active →
 
 The `AIConstraintValidator` pre-flight runs before a proposal enters the vote queue. It checks proposals against the four constitutional invariants — a proposal that would push `MaxInflationBps` above 500 is rejected at this stage and never reaches a vote. The `constitutional_violation_rejected_at_submission` test covers this on every CI build.
 
-Governance parameters on testnet:
+Governance parameters in pre-testnet pilot:
 
 | Parameter | Value |
 |---|---|
@@ -1052,7 +1052,7 @@ Governance parameters on testnet:
 
 `ForklessUpgradeEngine` activates hash-committed upgrades at epoch boundaries only — validators know exactly what code will activate before casting a vote. `Version.is_valid_upgrade()` enforces monotonic version progression. Partial upgrade payloads are rejected atomically.
 
-`proposal-testnet-001` ran the full lifecycle on `bleep-testnet-1`: pre-flight, ZK votes from 7 validators, 70% quorum, on-chain execution at block 1,105. It reduced `FeeBurnBps` from 2,500 to 2,000.
+`proposal-pretestnet-001` ran the full lifecycle in pre-testnet pilot: pre-flight, ZK votes from participating validators, 70% quorum, on-chain execution at block 1,105. It reduced `FeeBurnBps` from 2,500 to 2,000.
 
 ---
 
@@ -1290,7 +1290,7 @@ log_level = "info"
 [consensus]
 block_interval_ms = 3000
 max_txs_per_block = 4096
-blocks_per_epoch  = 1000   # 100 on testnet
+blocks_per_epoch  = 1000   # 100 in pre-testnet pilot
 validator_id      = "validator-0"
 
 [features]
@@ -1303,7 +1303,7 @@ quantum = true   # do not disable on any network-connected node
 | `BLEEP_STATE_DIR` | `/tmp/bleep-state` | Local RocksDB path (offline balance fallback) |
 | `RUST_LOG` | `info` | tracing log filter |
 
-Cargo feature flags: `mainnet` (default, on), `testnet` (off), `quantum` (default, on — enables `pqcrypto` and `pqcrypto-kyber`).
+Cargo feature flags: `mainnet` (default, on), `pretestnet` (off), `quantum` (default, on — enables `pqcrypto` and `pqcrypto-kyber`).
 
 ---
 
@@ -1471,7 +1471,7 @@ Key findings and resolutions:
 
 Full report: `docs/SECURITY_AUDIT_SPRINT9.md`
 
-### Adversarial test suite (72-hour continuous, 7 validators)
+### Adversarial test suite (72-hour continuous, participating validators)
 
 | Scenario | Result |
 |---|---|
@@ -1507,7 +1507,7 @@ These are stated plainly. If you're evaluating BLEEP for production use, these a
 
 **Tier 2 and Tier 1 bridge not yet live.** Implemented and tested against mock verifier sets. Not yet deployed in a live multi-party environment. Mainnet target.
 
-**NTP drift guard not enforced at testnet startup.** Implemented (warn > 1 s, halt > 30 s). Activated as a mainnet gate (SA-I2).
+**NTP drift guard not enforced at pre-testnet startup.** Implemented (warn > 1 s, halt > 30 s). Activated as a mainnet gate (SA-I2).
 
 ---
 
@@ -1516,10 +1516,10 @@ These are stated plainly. If you're evaluating BLEEP for production use, these a
 | Phase | Status | Definition of done |
 |---|---|---|
 | 1 — Foundation | ✅ Complete | 19 crates compile; post-quantum crypto active; STARK proofs (transparent, no trusted setup); 4-node devnet; Tier 4 live on Sepolia |
-| 2 — Testnet Alpha | ✅ Complete | 7-validator `bleep-testnet-1`, public faucet, block explorer, full CI pipeline |
+| 2 — Pre-testnet Pilot | ✅ Complete | Participating validators `bleep-pretestnet-1`, public faucet, block explorer, full CI pipeline |
 | 3 — Protocol Hardening | ✅ Complete | Security audit (all critical/high resolved), 72-hour chaos suite, MPC ceremony, ≥10,000 TPS benchmark |
 | 4 — AI Model Training | ⏳ Active | `DeterministicInferenceEngine` passes determinism suite, governance pre-flight ≥ 95% accuracy |
-| 5 — Public Testnet | ⏳ Upcoming | ≥ 50 validators, ≥ 6 continents, 30 consecutive days without manual intervention |
+| 5 — Public Pre-testnet | ⏳ Upcoming | ≥ 50 validators, ≥ 6 continents, 30 consecutive days without manual intervention |
 | 6 — Pre-Sale / ICO | ⏳ Upcoming | ICO complete, all vesting contracts deployed and verified on-chain |
 | 7 — Mainnet | 🔜 Planned | ≥ 21 validators, governance active from block 1, BLEEP Connect Tier 1–4 live, NTP guard active |
 
@@ -1550,7 +1550,7 @@ MIT OR Apache-2.0, at your option. See [LICENSE](LICENSE).
 
 ---
 
-*BLEEP · Quantum Trust Network · Protocol Version 3 · `bleep-testnet-1`*
+*BLEEP · Quantum Trust Network · Protocol Version 3 · `bleep-pretestnet-1`*
 
 *This document describes Protocol Version 3. It is not financial or investment advice. Protocol parameters may change before mainnet deployment.*
 This invariant constrains the use of AI-assisted components: any model operating on a consensus-critical path must produce byte-identical outputs given identical inputs, be identified by a governance-approved SHA3-256 hash, and use deterministic feature extraction and output rounding.
@@ -1757,7 +1757,7 @@ The node verifies the SRS against the MPC transcript on startup before any ZK op
 
 Let V = {v₁, …, vₙ} be the active validator set at epoch e. Each validator carries a SPHINCS+ verification key, a Kyber-1024 encapsulation key, and a stake in microBLEEP. Total staked supply S = Σsᵢ.
 
-Safety is guaranteed when Byzantine stake f < S/3. Liveness additionally requires eventual message delivery within a known bound Δ. The 3,000 ms slot timer is calibrated against observed testnet propagation latency.
+Safety is guaranteed when Byzantine stake f < S/3. Liveness additionally requires eventual message delivery within a known bound Δ. The 3,000 ms slot timer is calibrated against observed pre-testnet pilot propagation latency.
 
 Network model: partial synchrony. Safety holds under full asynchrony; liveness requires partial synchrony. The adversary may control at most f < S/3 of staked supply and may direct those validators arbitrarily, including equivocation and selective silence.
 
@@ -2433,7 +2433,7 @@ An independent security audit of Protocol Version 3 reviewed 16,127 lines of Rus
 
 Full audit report: `docs/SECURITY_AUDIT_SPRINT9.md`
 
-### Adversarial Test Suite Results (72-hour continuous run, 7 validators)
+### Adversarial Test Suite Results (72-hour continuous run, participating validators)
 
 | Scenario | Result | Invariant verified |
 |---|---|---|
@@ -3538,9 +3538,9 @@ All 19 crates compile cleanly. Post-quantum cryptography active (SPHINCS+-SHAKE-
 
 ---
 
-### Phase 2 — Testnet Alpha ✅ *Complete*
+### Phase 2 — Pre-testnet Pilot ✅ *Complete*
 
-7-validator `bleep-testnet-1` genesis across 4 continents. Public DNS seeds at `seeds.testnet.bleep.network`. Public faucet (`POST /faucet/{address}`, 1,000 BLEEP per 24 hours). Block explorer (`GET /explorer`, 6 s refresh). JWT rotation, NDJSON audit export. Grafana dashboard (12 panels) + Prometheus for all 7 validators. Full CI pipeline: fmt, clippy, test, audit, build, fuzz-smoke, docker-smoke.
+Participating validators `bleep-pretestnet-1` genesis across multiple regions. Public DNS seeds at `seeds.pretestnet.bleep.network`. Public faucet (`POST /faucet/{address}`, 1,000 BLEEP per 24 hours). Block explorer (`GET /explorer`, 6 s refresh). JWT rotation, NDJSON audit export. Monitoring dashboard + metrics for participating validators. Full CI pipeline: fmt, clippy, test, audit, build, fuzz-smoke, docker-smoke.
 
 ---
 

@@ -1,9 +1,43 @@
-## License
+.PHONY: all build test clean fmt clippy check help
 
-This repository is licensed under the Apache License 2.0. See the [LICENSE](./LICENSE) file for details.
+# Default target
+all: check test
 
-Some subcomponents are under different licenses:
-- Smart contracts (`/smart-contracts`) – GNU GPLv3
-- SDKs (`/sdk`) – MIT License
-- Virtual Machine (`/vm`) – Business Source License 1.1
-- Documentation (`/docs`) – Creative Commons Attribution 4.0 (CC-BY-4.0)
+# Build the project
+build:
+	cargo build --release
+
+# Run tests
+test:
+	cargo test --lib
+
+# Clean build artifacts
+clean:
+	cargo clean
+
+# Format code
+fmt:
+	cargo fmt --all --check
+
+# Run clippy
+clippy:
+	cargo clippy --all-targets -- -D warnings
+
+# Check compilation
+check:
+	cargo check
+
+# Full CI check
+ci: fmt clippy check test
+
+# Help
+help:
+	@echo "Available targets:"
+	@echo "  build    - Build the project in release mode"
+	@echo "  test     - Run library tests"
+	@echo "  clean    - Clean build artifacts"
+	@echo "  fmt      - Format code with rustfmt"
+	@echo "  clippy   - Run clippy lints"
+	@echo "  check    - Check compilation without building"
+	@echo "  ci       - Run full CI checks (fmt, clippy, check, test)"
+	@echo "  help     - Show this help message"

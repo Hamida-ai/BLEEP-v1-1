@@ -289,7 +289,7 @@ Blocks and transactions propagate via epidemic gossip with fanout 8. `PeerScorin
 3. **Block validation:** each validator independently verifies the STARK proof, the SPHINCS+ signature, and the SMT root transition.
 4. **Vote:** accepting validators broadcast a SPHINCS+-signed prevote, then a signed precommit.
 5. **Finalisation:** a block is finalised when precommits representing more than 6,667 basis points of S are received. Finalisation is irreversible.
-6. **Epoch transition:** every 1,000 blocks (mainnet) / 100 blocks (testnet), the `epoch_advance` task rotates the validator set, distributes rewards, and resets slashing counters.
+6. **Epoch transition:** every 1,000 blocks (mainnet) / 100 blocks (pre-testnet), the `epoch_advance` task rotates the validator set, distributes rewards, and resets slashing counters.
 
 ### 8.4 Finality Guarantees
 
@@ -318,8 +318,8 @@ Finalisation is not probabilistic and does not use a challenge window. A block f
 
 `LiveGovernanceEngine` processes typed proposals through a six-stage lifecycle: Submit → `AIConstraintValidator` pre-flight → Active → Tally → Execute → Record. A proposal that would set `MaxInflationBps` above 500 is rejected at the pre-flight stage and never reaches a vote.
 
-| Parameter | Testnet value | Notes |
-|-----------|--------------|-------|
+| Parameter | Pre-testnet value | Notes |
+|-----------|----------------|-------|
 | `voting_period_blocks` | 1,000 blocks (~50 min) | At 3-second block time |
 | `quorum_bps` | 1,000 bps (10%) | Minimum stake participation |
 | `pass_threshold_bps` | 6,667 bps (66.67%) | Yes votes required of participating stake |
@@ -345,7 +345,7 @@ Finalisation is not probabilistic and does not use a challenge window. A block f
 
 ### 9.5 Live Governance Record
 
-`proposal-testnet-001` reduced `FeeBurnBps` from 2,500 to 2,000 and completed the full lifecycle on `bleep-testnet-1`: `AIConstraintValidator` pre-flight, ZK vote casting by seven validators, quorum check at 70% stake participation, constitutional validation, on-chain execution at block 1,105, and event recording.
+`proposal-testnet-001` reduced `FeeBurnBps` from 2,500 to 2,000 and completed the full lifecycle in a pre-testnet pilot: `AIConstraintValidator` pre-flight, ZK vote casting by participating validators, quorum check at 70% stake participation, constitutional validation, on-chain execution at block 1,105, and event recording.
 
 ---
 
@@ -469,7 +469,7 @@ BLEEP increases throughput exclusively through mechanisms that preserve the dete
 
 ### 13.1 Sharding Model
 
-BLEEP partitions state across 10 shards (`NUM_SHARDS`) in the testnet configuration. `ShardManager` routes transactions to shards by account address. Each shard maintains an independent RocksDB instance and processes transactions in parallel. The shard count is a governance parameter bounded by the BFT safety requirement: each shard must maintain f < S_shard/3.
+BLEEP partitions state across 10 shards (`NUM_SHARDS`) in the pre-testnet configuration. `ShardManager` routes transactions to shards by account address. Each shard maintains an independent RocksDB instance and processes transactions in parallel. The shard count is a governance parameter bounded by the BFT safety requirement: each shard must maintain f < S_shard/3.
 
 ### 13.2 Cross-Shard Transactions
 
@@ -486,9 +486,9 @@ Transactions modifying accounts on multiple shards use `TwoPhaseCommitCoordinato
 | Total transactions processed | 39,315,600 |
 | Full-capacity block ratio | 82.3% |
 
-*Table 10 — Benchmark record (source: `GET /rpc/benchmark/latest`, `bleep-testnet-1`)*
+*Table 10 — Benchmark record (source: `GET /rpc/benchmark/latest`, pre-testnet pilot)*
 
-These figures reflect testnet conditions: 7 validators, controlled network latency, geographically concentrated nodes, and a uniform transaction workload. Throughput on a geographically distributed mainnet with heterogeneous transaction types and higher validator counts will differ.
+These figures reflect pre-testnet pilot conditions: controlled network latency, geographically concentrated nodes, and a uniform transaction workload. Throughput on a geographically distributed mainnet with heterogeneous transaction types and higher validator counts will differ.
 
 ### 13.4 Fault Recovery and State Repair
 
@@ -619,7 +619,7 @@ The primary near-term engineering milestone is activating `winterfell::Prover::p
 
 Phase 4 completes the `DeterministicInferenceEngine` training pipeline, model governance approval flow, and `AIConstraintValidator` v2 with a trained classification model.
 
-### 18.3 Public Testnet Expansion
+### 18.3 Public Pre-testnet Expansion
 
 Phase 4 targets at least 50 validators across at least 6 continents, with open registration, a public block explorer, a 30-day sustained run, and a 100,000 BLEEP bug bounty pool.
 
@@ -637,7 +637,7 @@ SPHINCS+ does not support aggregation: n validators produce n independent 7,856-
 
 BLEEP is a Quantum Trust Network: a decentralized execution protocol in which transaction signing, peer authentication, key encapsulation, and zero-knowledge proof verification are each secured by NIST-standardised post-quantum algorithms or hash-based transparent proof systems at Security Level 5. No classical public-key primitive or pairing-based construction is present on any cryptographically sensitive path.
 
-Protocol Version 4 demonstrates the practical feasibility of the design: SPHINCS+-signed blocks at a 3,000 ms slot interval, Kyber-1024 key encapsulation for peer channels, STARK block validity proofs, a 72-hour adversarial test suite with no unresolved failures, an independent security audit with all Critical and High findings resolved, and a one-hour sustained benchmark averaging 10,921 transactions per second across 10 shards under testnet conditions.
+Protocol Version 4 demonstrates the practical feasibility of the design: SPHINCS+-signed blocks at a 3,000 ms slot interval, Kyber-1024 key encapsulation for peer channels, STARK block validity proofs, a 72-hour adversarial test suite with no unresolved failures, an independent security audit with all Critical and High findings resolved, and a one-hour sustained benchmark averaging 10,921 transactions per second across 10 shards under pre-testnet pilot conditions.
 
 The contribution of BLEEP is the demonstration that a practical, audited, and operationally tested foundation can be constructed on exclusively post-quantum primitives — including transparent, setup-free zero-knowledge proofs — with the determinism, governance, and economic machinery required for a deployable protocol, at a security level that provides meaningful long-term resistance to quantum adversaries.
 
@@ -684,7 +684,7 @@ All values are drawn from the production Rust source at Protocol Version 4. Para
 | Block interval | 3,000 ms | `BLOCK_INTERVAL_MS` |
 | Max transactions per block | 4,096 | `MAX_TXS_PER_BLOCK` |
 | Blocks per epoch (mainnet) | 1,000 | `BLOCKS_PER_EPOCH` |
-| Blocks per epoch (testnet) | 100 | `testnet-genesis.toml` |
+| Blocks per epoch (pre-testnet) | 100 | `testnet-genesis.toml` |
 | Finality threshold (†) | >6,667 bps of total stake | `FinalityManager` |
 | Active shards | 10 | `NUM_SHARDS` |
 | Double-sign slash | 33% of stake | `double_signing_penalty` |
@@ -736,4 +736,4 @@ All values are drawn from the production Rust source at Protocol Version 4. Para
 
 ---
 
-*© 2026 BLEEP Project · Quantum Trust Network · Protocol Version 1 · bleep-testnet-1*
+*© 2026 BLEEP Project · Quantum Trust Network · Protocol Version 1 · bleep-pretestnet-1*

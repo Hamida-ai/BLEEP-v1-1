@@ -87,11 +87,11 @@ Sprint 8 delivers the **Phase 5 AI-driven protocol evolution layer** in `bleep-g
 - `shard_ai_extension.rs` in `bleep-state`: AI advisory hooks for shard lifecycle decisions.
 - `cross_shard_ai_hooks.rs`: AI routing recommendations for cross-shard transactions.
 
-**Testnet**
-- Testnet faucet drip amount changed from 1,000 BLEEP → **10 BLEEP** per address per 24 hours.
+**Pre-testnet**
+- Pre-testnet faucet drip amount changed from 1,000 BLEEP → **10 BLEEP** per address per 24 hours.
 - Automatic 10 BLEEP credit on new wallet creation via `bleep-cli wallet create`.
-- `AccountState::testnet_default()` provides 10 BLEEP to new accounts when DB record is absent.
-- `TESTNET_FAUCET_CHANGES.md` documents all faucet changes.
+- `AccountState::pretestnet_default()` provides 10 BLEEP to new accounts when DB record is absent.
+- `PRETESTNET_FAUCET_CHANGES.md` documents all faucet changes.
 
 ### Changed
 - `bleep-scheduler`: 20 built-in tasks across 7 categories (up from 14 across 5).

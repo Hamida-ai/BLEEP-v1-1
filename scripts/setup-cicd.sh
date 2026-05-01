@@ -208,7 +208,7 @@ verify_docker() {
     
     print_success "docker-compose.yml found"
     
-    echo "To start multi-node testnet:"
+    echo "To start multi-node pre-testnet:"
     echo "  make docker-compose-up"
     echo "  make docker-compose-logs"
     echo "  make docker-compose-down"
@@ -269,7 +269,7 @@ print_summary() {
     echo ""
     echo "3. Build and run:"
     echo "   make build-release     # Optimized build"
-    echo "   make docker-compose-up # Start testnet"
+    echo "   make docker-compose-up # Start pre-testnet"
     echo ""
     echo "4. For more options:"
     echo "   make help"

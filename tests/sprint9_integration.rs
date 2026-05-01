@@ -223,7 +223,7 @@ mod layer3_bridge_integration {
         let id = bridge.initiate(
             Chain::Bleep,
             Chain::EthereumSepolia,
-            "bleep:testnet:alice",
+            "bleep:pretestnet:alice",
             "0xAlice",
             5_000_000_000,
             "BLEEP",
@@ -271,7 +271,7 @@ mod governance_live_integration {
         // Submit: reduce max inflation from 5% to 4%
         let pid = gov
             .submit(
-                "bleep:testnet:foundation",
+                "bleep:pretestnet:foundation",
                 "Reduce max inflation to 4% (400 bps)",
                 "Proposal to lower the epoch inflation cap from 500 to 400 bps.",
                 Some(GovernableParam::MaxInflationBps(400)),
@@ -279,7 +279,7 @@ mod governance_live_integration {
             )
             .unwrap();
 
-        // 7 validators each with 10% of total stake vote YES
+        // Participating validators each with 10% of total stake vote YES
         let stake_per_validator = total_staked / 10;
         for i in 0..7 {
             gov.vote(
@@ -297,7 +297,7 @@ mod governance_live_integration {
         assert_eq!(
             state,
             ProposalState::Passed,
-            "7 validators with 70% stake must pass proposal"
+            "Participating validators with 70% stake must pass proposal"
         );
 
         let result = gov.execute(pid).unwrap();
@@ -353,13 +353,13 @@ mod governance_live_integration {
     }
 
     #[test]
-    fn first_testnet_proposal_executes_fee_burn_change() {
-        // Mirror the production Sprint 9 testnet proposal-001
+    fn first_pretestnet_proposal_executes_fee_burn_change() {
+        // Mirror the production Sprint 9 pretestnet proposal-001
         let mut gov = engine();
         let pid = gov
             .submit(
-                "bleep:testnet:foundation",
-                "Reduce fee burn to 20% (proposal-testnet-001)",
+                "bleep:pretestnet:foundation",
+                "Reduce fee burn to 20% (proposal-pretestnet-001)",
                 "Lower the base fee burn from 25% to 20% to increase validator rewards.",
                 Some(GovernableParam::FeeBurnBps(2_000)),
                 gov.config.min_deposit,
@@ -430,7 +430,7 @@ mod shard_stress_integration {
         use std::collections::HashSet;
         let mut assigned: HashSet<u8> = HashSet::new();
         for i in 0..1000 {
-            let id = ShardId::from_address(&format!("bleep:testnet:addr{:05}", i));
+            let id = ShardId::from_address(&format!("bleep:pretestnet:addr{:05}", i));
             assigned.insert(id.0);
         }
         // With 1000 addresses we should cover all 10 shards

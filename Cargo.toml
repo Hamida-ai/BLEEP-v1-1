@@ -55,9 +55,9 @@ name = "bleep-executor"
 path = "src/bin/executor.rs"
 
 [features]
-default  = ["mainnet", "quantum"]
+default  = ["mainnet"]
 mainnet  = []
-testnet  = []
+pretestnet  = []
 quantum  = ["pqcrypto", "pqcrypto-kyber"]
 
 [dependencies]

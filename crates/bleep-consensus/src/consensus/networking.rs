@@ -158,8 +158,8 @@ mod tests {
     }
 
     #[test]
-    fn testnet_7_validators_10m_each() {
-        // bleep-testnet-1: 7 validators × 10,000,000 BLEEP each
+    fn pretestnet_participating_validators() {
+        // bleep-pretestnet-1: participating validators with stake
         let nm = NetworkingModule::new();
         let per_validator_micro: u64 = 10_000_000 * 100_000_000;
         nm.set_total_stake_micro(per_validator_micro * 7);

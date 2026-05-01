@@ -223,7 +223,7 @@ mod governance_integration_tests {
             proposal
                 .add_vote(
                     format!("val-{}", i),
-                    i <= 7, // 7 validators vote yes, 3 vote no
+                    i <= 7, // Majority validators vote yes
                     stake,
                 )
                 .unwrap();

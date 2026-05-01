@@ -37,8 +37,8 @@ pub struct AccountState {
 }
 
 impl AccountState {
-    /// Default account state with 10 BLEEP initial balance for testnet
-    pub fn testnet_default() -> Self {
+    /// Default account state with 10 BLEEP initial balance for pre-testnet
+    pub fn pretestnet_default() -> Self {
         Self {
             balance: 1_000_000_000, // 10 BLEEP in microBLEEP
             nonce: 0,

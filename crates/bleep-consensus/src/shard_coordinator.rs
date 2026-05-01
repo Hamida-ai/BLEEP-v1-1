@@ -63,7 +63,7 @@ pub struct ShardState {
 
 impl ShardState {
     pub fn new(shard_id: ShardId) -> Self {
-        // Assign validators round-robin across shards (7 validators, 10 shards)
+        // Assign validators round-robin across shards (participating validators, 10 shards)
         let validator_count = 7usize;
         let validators: Vec<String> = (0..2usize)
             .map(|i| {

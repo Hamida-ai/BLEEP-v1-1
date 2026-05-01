@@ -1,5 +1,5 @@
 {
-    "chain_id": "BLEEP-Testnet-001",
+    "chain_id": "BLEEP-PreTestnet-001",
     "genesis_time": "2025-03-06T00:00:00Z",
     "consensus": {
         "algorithm": "AI-Adaptive-PoS",
