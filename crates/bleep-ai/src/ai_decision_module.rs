@@ -338,7 +338,7 @@ impl AIDecisionModule {
                 confidence: assessment.confidence,
                 rationale: "All metrics are within normal range".to_string(),
             }),
-            
+
             AnomalyClass::Degraded => Ok(RecoveryRecommendation {
                 recommendation: "Monitor closely, prepare for intervention".to_string(),
                 severity: 1,
@@ -348,7 +348,7 @@ impl AIDecisionModule {
                     assessment.anomaly_score
                 ),
             }),
-            
+
             AnomalyClass::Anomalous => Ok(RecoveryRecommendation {
                 recommendation: "Governance should review incident and consider recovery actions".to_string(),
                 severity: 2,
@@ -359,7 +359,7 @@ impl AIDecisionModule {
                     assessment.anomaly_score
                 ),
             }),
-            
+
             AnomalyClass::Critical => Ok(RecoveryRecommendation {
                 recommendation: "Urgent: Governance should immediately review and execute recovery".to_string(),
                 severity: 3,
