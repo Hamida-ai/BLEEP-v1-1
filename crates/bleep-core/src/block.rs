@@ -31,8 +31,8 @@ use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 
 // Transaction signature helpers used by block compaction and validation.
-use bleep_crypto::tx_signer::{tx_payload, verify_tx_signature};
 use bleep_crypto::pq_crypto::SignatureScheme;
+use bleep_crypto::tx_signer::{tx_payload, verify_tx_signature};
 use pqcrypto_sphincsplus::sphincsshake256fsimple;
 use pqcrypto_traits::sign::{DetachedSignature as _, SecretKey as _};
 

@@ -1714,6 +1714,7 @@ dependencies = [
  "ark-serialize",
  "ark-std",
  "bincode",
+ "bleep-crypto",
  "hex",
  "rand 0.8.5",
  "serde",

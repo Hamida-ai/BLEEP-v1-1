@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 use std::collections::BTreeMap;
 use tracing::{debug, info, warn};
+use bleep_crypto::tx_signer::{sign_tx_payload, verify_tx_signature};
 
 // =================================================================================================
 // PROOF TYPES
@@ -154,12 +155,8 @@ impl BlockValidityProof {
             h.finalize().into()
         };
 
-        // Use SPHINCS+ signature (already in bleep-crypto)
-        // For now, create a deterministic signature placeholder (will be replaced with real pqcrypto call)
-        let mut sig_hasher = Sha3_256::new();
-        sig_hasher.update(&transcript_hash);
-        sig_hasher.update(sk_bytes);
-        let signature_bytes = sig_hasher.finalize().to_vec();
+        // Use real SPHINCS+ signature
+        let signature_bytes = sign_tx_payload(&transcript_hash, sk_bytes)?;
 
         // Build Merkle paths for assertions (boundary constraints)
         let mut path_value_0 = [0u8; 32];
@@ -208,6 +205,7 @@ impl BlockValidityProof {
         _tx_count: u64,
         merkle_root_hash: &[u8; 31],
         validator_pk_hash: &[u8; 31],
+        validator_pk: &[u8],
     ) -> Result<bool, String> {
         // 1. Verify transcript contains expected public inputs
         let merkle_found = proof.transcript.windows(31).any(|w| w == merkle_root_hash);
@@ -236,7 +234,20 @@ impl BlockValidityProof {
             return Ok(false);
         }
 
-        // 4. Verify Merkle paths are well-formed (for transparency)
+        // 4. Verify SPHINCS+ signature
+        let mut sig_preimage = proof.trace_root.to_vec();
+        sig_preimage.extend_from_slice(&proof.transcript);
+        let transcript_hash: [u8; 32] = {
+            let mut h = Sha3_256::new();
+            h.update(&sig_preimage);
+            h.finalize().into()
+        };
+        if !verify_tx_signature(&transcript_hash, &proof.signature_bytes, validator_pk) {
+            debug!("SPHINCS+ signature verification failed");
+            return Ok(false);
+        }
+
+        // 5. Verify Merkle paths are well-formed (for transparency)
         for path in &proof.merkle_paths {
             if path.path.is_empty() {
                 debug!(
@@ -314,10 +325,7 @@ impl L3TransferProof {
         transcript.extend_from_slice(&amount.to_le_bytes());
 
         // Sign transcript
-        let mut sig_hash = Sha3_256::new();
-        sig_hash.update(&transcript);
-        sig_hash.update(sk_bytes);
-        let signature_bytes = sig_hash.finalize().to_vec();
+        let signature_bytes = sign_tx_payload(&transcript, sk_bytes)?;
 
         let prove_time_ms = start.elapsed().as_millis() as u64;
 
@@ -341,6 +349,7 @@ impl L3TransferProof {
         intent_id: &[u8; 32],
         source_root: &[u8; 32],
         dest_root: &[u8; 32],
+        validator_pk: &[u8],
     ) -> Result<bool, String> {
         debug!(
             "Verifying post-quantum L3 transfer proof for intent {}",
@@ -367,6 +376,12 @@ impl L3TransferProof {
         // Verify signature presence
         if proof.signature_bytes.is_empty() {
             warn!("L3 transfer proof: empty signature");
+            return Ok(false);
+        }
+
+        // Verify SPHINCS+ signature
+        if !verify_tx_signature(&proof.transcript, &proof.signature_bytes, validator_pk) {
+            warn!("SPHINCS+ signature verification failed");
             return Ok(false);
         }
 
@@ -411,10 +426,7 @@ impl ExecutionProof {
         transcript.extend_from_slice(tx_hash);
 
         // Sign
-        let mut sig_hash = Sha3_256::new();
-        sig_hash.update(&transcript);
-        sig_hash.update(sk_bytes);
-        let signature_bytes = sig_hash.finalize().to_vec();
+        let signature_bytes = sign_tx_payload(&transcript, sk_bytes)?;
 
         let prove_time_ms = start.elapsed().as_millis() as u64;
 
@@ -437,6 +449,7 @@ impl ExecutionProof {
         proof: &PostQuantumProof,
         state_before: &[u8; 32],
         state_after: &[u8; 32],
+        validator_pk: &[u8],
     ) -> Result<bool, String> {
         debug!("Verifying post-quantum execution proof");
 
@@ -452,6 +465,12 @@ impl ExecutionProof {
             return Ok(false);
         }
 
+        // Verify SPHINCS+ signature
+        if !verify_tx_signature(&proof.transcript, &proof.signature_bytes, validator_pk) {
+            debug!("SPHINCS+ signature verification failed");
+            return Ok(false);
+        }
+
         Ok(true)
     }
 }
@@ -459,9 +478,11 @@ impl ExecutionProof {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bleep_crypto::tx_signer::generate_tx_keypair;
 
     #[test]
     fn test_block_validity_proof_generation() {
+        let (_pk, sk) = generate_tx_keypair();
         let proof = BlockValidityProof::prove(
             1,
             0,
@@ -469,7 +490,7 @@ mod tests {
             &[0xAAu8; 31],
             &[0xBBu8; 31],
             &[0xCCu8; 32],
-            b"test_secret_key",
+            &sk,
         );
 
         assert!(proof.is_ok());
@@ -480,6 +501,7 @@ mod tests {
 
     #[test]
     fn test_block_validity_proof_verification() {
+        let (pk, sk) = generate_tx_keypair();
         let proof = BlockValidityProof::prove(
             1,
             0,
@@ -487,11 +509,11 @@ mod tests {
             &[0xAAu8; 31],
             &[0xBBu8; 31],
             &[0xCCu8; 32],
-            b"test_secret_key",
+            &sk,
         )
         .unwrap();
 
-        let result = BlockValidityProof::verify(&proof, 1, 0, 3, &[0xAAu8; 31], &[0xBBu8; 31]);
+        let result = BlockValidityProof::verify(&proof, 1, 0, 3, &[0xAAu8; 31], &[0xBBu8; 31], &pk);
 
         assert!(result.is_ok(), "verify returned error");
         assert!(result.unwrap(), "proof verification failed");
@@ -499,12 +521,13 @@ mod tests {
 
     #[test]
     fn test_l3_transfer_proof() {
+        let (_pk, sk) = generate_tx_keypair();
         let proof = L3TransferProof::prove(
             &[0x11u8; 32],
             &[0x22u8; 32],
             &[0x33u8; 32],
             1_000_000u128,
-            b"sk_bytes",
+            &sk,
         )
         .unwrap();
 

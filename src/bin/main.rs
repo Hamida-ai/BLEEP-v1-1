@@ -653,7 +653,9 @@ async fn run() -> Result<(), Box<dyn Error>> {
     info!("");
     info!("🚀 ════════════════════════════════════════════════════════════════");
     info!("   BLEEP Node LIVE — Protocol Hardened · Audit Complete · 10K TPS");
-    info!("   Protocol v3  |  Chain: bleep-pretestnet-1  |  10 shards  |  Participating validators");
+    info!(
+        "   Protocol v3  |  Chain: bleep-pretestnet-1  |  10 shards  |  Participating validators"
+    );
     info!("══ Core RPC ═════════════════════════════════════════════════════════");
     info!("   Health:       http://0.0.0.0:8545/rpc/health");
     info!("   State:        http://0.0.0.0:8545/rpc/state/{{address}}");
