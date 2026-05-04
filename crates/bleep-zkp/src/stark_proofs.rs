@@ -527,7 +527,7 @@ impl BlockValidityVerifier {
             .map_err(|e| format!("Failed to deserialize Winterfell proof: {:?}", e))?;
 
         // Create AIR for verification with the public inputs
-        let air = BlockValidityAir::for_verifying(
+        let _air = BlockValidityAir::for_verifying(
             block_index,
             epoch_id,
             tx_count,
