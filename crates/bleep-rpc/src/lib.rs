@@ -528,7 +528,22 @@ pub fn rpc_routes_with_state(
     // GET /rpc/tx/history
     let tx_history = warp::path!("rpc" / "tx" / "history")
         .and(warp::get())
-        .map(|| warp::reply::json(&Vec::<String>::new()));
+        .and(with_rpc_state(rpc.clone()))
+        .and_then(|st: RpcState| async move {
+            if let Some(pool) = st.transaction_pool {
+                let txs = pool.get_transactions().await;
+                let tx_ids: Vec<String> = txs
+                    .into_iter()
+                    .map(|tx| format!(
+                        "{}:{}:{}:{}",
+                        tx.sender, tx.receiver, tx.amount, tx.timestamp
+                    ))
+                    .collect();
+                Ok::<_, warp::Rejection>(warp::reply::json(&tx_ids))
+            } else {
+                Ok::<_, warp::Rejection>(warp::reply::json(&Vec::<String>::new()))
+            }
+        });
 
     // GET /rpc/block/latest
     let block_latest = warp::path!("rpc" / "block" / "latest")
@@ -2955,6 +2970,57 @@ bleep_jwt_rotations_total {jwt_rot}
                 .body(body)
                 .unwrap()
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bleep_core::transaction::ZKTransaction;
+    use bleep_core::transaction_pool::TransactionPool;
+    use bleep_crypto::tx_signer::{generate_tx_keypair, sign_tx_payload, tx_payload};
+    use std::sync::Arc;
+    use warp::test::request;
+
+    #[tokio::test]
+    async fn rpc_tx_history_returns_pending_transactions() {
+        let pool = TransactionPool::new(10);
+
+        let (public_key, secret_key) = generate_tx_keypair();
+        let sender = "BLEEP1sender".to_string();
+        let receiver = "BLEEP1receiver".to_string();
+        let amount = 123u64;
+        let timestamp = 1_700_000_000u64;
+
+        let payload = tx_payload(&sender, &receiver, amount, timestamp);
+        let detached_sig = sign_tx_payload(&payload, &secret_key).expect("sign payload");
+
+        let mut signature = public_key.clone();
+        signature.extend_from_slice(&detached_sig);
+
+        let tx = ZKTransaction {
+            sender: sender.clone(),
+            receiver: receiver.clone(),
+            amount,
+            timestamp,
+            signature,
+        };
+
+        assert!(pool.add_transaction(tx.clone()).await);
+
+        let rpc_state = RpcState::new().with_transaction_pool(pool);
+        let routes = rpc_routes_with_state(rpc_state);
+        let resp = request()
+            .method("GET")
+            .path("/rpc/tx/history")
+            .reply(&routes)
+            .await;
+
+        assert_eq!(resp.status(), 200);
+
+        let tx_ids: Vec<String> = serde_json::from_slice(resp.body()).expect("valid JSON");
+        assert_eq!(tx_ids.len(), 1);
+        assert_eq!(tx_ids[0], format!("{}:{}:{}:{}", sender, receiver, amount, timestamp));
+    }
 }
 
 // ── Block explorer HTML ───────────────────────────────────────────────────────
