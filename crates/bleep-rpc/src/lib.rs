@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 //! # bleep-rpc
 //!
 //! Provides `rpc_routes_with_state()` used by `main.rs`, and re-exports
@@ -27,7 +29,7 @@
 //! through `RpcState`, so they always reflect the most recently committed block.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use parking_lot::Mutex;
@@ -35,6 +37,7 @@ use serde::{Deserialize, Serialize};
 use warp::Filter;
 
 use bleep_auth::{AuthService, AuthError, SessionClaims};
+use bleep_core::{Blockchain, transaction_pool::TransactionPool};
 
 // ─── Auth rejection ──────────────────────────────────────────────────────────
 
@@ -46,7 +49,6 @@ impl warp::reject::Reject for AuthRejection {}
 use bleep_consensus::block_producer::BlockProducer;
 use bleep_consensus::slashing_engine::{SlashingEngine, SlashingEvidence};
 use bleep_consensus::validator_identity::{ValidatorIdentity, ValidatorRegistry};
-use bleep_core::transaction_pool::TransactionPool;
 use bleep_economics::oracle_bridge::{OracleSource, PriceUpdate};
 use bleep_economics::BleepEconomicsRuntime;
 use bleep_interop::core::BleepConnectOrchestrator;
@@ -92,6 +94,8 @@ pub struct RpcState {
     pub block_producer: Option<Arc<BlockProducer>>,
     /// Live TransactionPool — attach at node startup so POST /rpc/tx can enqueue transactions.
     pub transaction_pool: Option<Arc<TransactionPool>>,
+    /// Live Blockchain state — attach so faucet credits update the consensus state.
+    pub blockchain: Option<Arc<RwLock<Blockchain>>>,
 }
 
 impl RpcState {
@@ -124,6 +128,7 @@ impl RpcState {
             audit_export_enabled: true,
             block_producer: None,
             transaction_pool: None,
+            blockchain: None,
         }
     }
 
@@ -179,6 +184,12 @@ impl RpcState {
     /// Attach the live `TransactionPool` so POST /rpc/tx can enqueue transactions.
     pub fn with_transaction_pool(mut self, pool: Arc<TransactionPool>) -> Self {
         self.transaction_pool = Some(pool);
+        self
+    }
+
+    /// Attach the live `Blockchain` so faucet credits update the in-memory consensus state.
+    pub fn with_blockchain(mut self, blockchain: Arc<RwLock<Blockchain>>) -> Self {
+        self.blockchain = Some(blockchain);
         self
     }
 
@@ -2448,6 +2459,13 @@ fn faucet_drip(
                 mgr.set_balance(&address, current + RpcState::FAUCET_DRIP_AMOUNT as u128);
             }
 
+            // Also update the legacy in-memory blockchain state used by consensus
+            if let Some(blockchain) = &st.blockchain {
+                let bc = blockchain.read().unwrap();
+                let mut core_state = bc.state.write().unwrap();
+                core_state.credit(&address, RpcState::FAUCET_DRIP_AMOUNT as u64);
+            }
+
             Box::new(warp::reply::with_status(
                 warp::reply::json(&FaucetDripResp {
                     address: address.clone(),
@@ -2975,10 +2993,13 @@ bleep_jwt_rotations_total {jwt_rot}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bleep_core::blockchain::{Blockchain, BlockchainState as CoreBlockchainState};
+    use bleep_core::block::Block;
     use bleep_core::transaction::ZKTransaction;
     use bleep_core::transaction_pool::TransactionPool;
     use bleep_crypto::tx_signer::{generate_tx_keypair, sign_tx_payload, tx_payload};
-    use std::sync::Arc;
+    use bleep_state::state_manager::StateManager;
+    use std::sync::{Arc, RwLock};
     use warp::test::request;
 
     #[tokio::test]
@@ -3020,6 +3041,49 @@ mod tests {
         let tx_ids: Vec<String> = serde_json::from_slice(resp.body()).expect("valid JSON");
         assert_eq!(tx_ids.len(), 1);
         assert_eq!(tx_ids[0], format!("{}:{}:{}:{}", sender, receiver, amount, timestamp));
+    }
+
+    #[tokio::test]
+    async fn faucet_drip_updates_both_state_manager_and_blockchain_state() {
+        let address = "BLEEP1faucetaddress".to_string();
+
+        let state_mgr = Arc::new(Mutex::new(StateManager::new()));
+        let tx_pool = TransactionPool::new(10);
+        let genesis = Block::new(0, vec![], "0".to_string());
+        let blockchain = Arc::new(RwLock::new(Blockchain::new(
+            genesis,
+            CoreBlockchainState::default(),
+            tx_pool.clone(),
+        )));
+
+        let rpc_state = RpcState::new()
+            .with_state_manager(Arc::clone(&state_mgr))
+            .with_transaction_pool(tx_pool)
+            .with_blockchain(Arc::clone(&blockchain));
+
+        let routes = rpc_routes_with_state(rpc_state);
+        let resp = request()
+            .method("POST")
+            .path(&format!("/faucet/{}", address))
+            .reply(&routes)
+            .await;
+
+        assert_eq!(resp.status(), 200);
+
+        let balance = state_mgr.lock().get_balance(&address);
+        assert_eq!(balance, RpcState::FAUCET_DRIP_AMOUNT as u128);
+
+        let core_bal = blockchain
+            .read()
+            .unwrap()
+            .state
+            .read()
+            .unwrap()
+            .balances
+            .get(&address)
+            .copied()
+            .unwrap_or(0);
+        assert_eq!(core_bal, RpcState::FAUCET_DRIP_AMOUNT);
     }
 }
 
