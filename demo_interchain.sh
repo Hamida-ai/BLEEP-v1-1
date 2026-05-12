@@ -23,12 +23,61 @@ if [[ -z "${SEPOLIA_BLEEP_FULFILL_ADDR:-}" ]]; then
 fi
 echo "✅ Sepolia contract address: $SEPOLIA_BLEEP_FULFILL_ADDR"
 
+# Generate JWT auth token for protected RPC endpoints
+if ! command -v python3 >/dev/null 2>&1 && ! command -v python >/dev/null 2>&1; then
+    echo "❌ Python is required to generate an RPC auth token."
+    exit 1
+fi
+PYTHON_BIN=python3
+if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+    PYTHON_BIN=python
+fi
+
+if [[ -z "${BLEEP_JWT_SECRET:-}" ]]; then
+    echo "⚠️  BLEEP_JWT_SECRET not set. Using default dev auth secret."
+    export BLEEP_JWT_SECRET=UtQcXNbNejElXUMcGocAuRh+YLiIgR9onZ1+PUJtJiU=
+fi
+
+JWT_TOKEN=$("$PYTHON_BIN" - <<'PY'
+import base64, json, hmac, hashlib, os, secrets, time
+secret_b64 = os.environ["BLEEP_JWT_SECRET"]
+secret = base64.b64decode(secret_b64)
+now = int(time.time())
+header = {"alg": "HS256", "typ": "JWT"}
+payload = {
+    "sub": "demo-interchain",
+    "jti": secrets.token_hex(16),
+    "iat": now,
+    "exp": now + 3600,
+    "roles": ["DappDeveloper"],
+    "nonce": secrets.token_hex(16),
+}
+def b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+segments = [
+    b64url(json.dumps(header, separators=(",", ":")).encode("utf-8")),
+    b64url(json.dumps(payload, separators=(",", ":")).encode("utf-8")),
+]
+signing_input = ".".join(segments).encode("ascii")
+signature = hmac.new(secret, signing_input, hashlib.sha256).digest()
+segments.append(b64url(signature))
+print(".".join(segments))
+PY
+)
+
+if [[ -z "$JWT_TOKEN" ]]; then
+    echo "❌ Failed to generate JWT token."
+    exit 1
+fi
+echo "✅ RPC auth token generated"
+
 echo ""
 echo "📝 Step 1: Submit an interchain intent"
 echo "Transferring 1 BLEEP to Ethereum address 0x742d35Cc6634C0532925a3b844Bc454e4438f44e"
 
 INTENT_RESPONSE=$(curl -s -X POST http://127.0.0.1:8545/rpc/connect/intent \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $JWT_TOKEN" \
   -d '{
     "source_chain": "BLEEP",
     "dest_chain": "Ethereum",
@@ -54,15 +103,35 @@ echo "✅ Intent submitted successfully!"
 echo "Intent ID: $INTENT_ID"
 
 echo ""
-echo "📊 Step 2: Check intent status"
+echo "📡 Step 2: Verify intent is visible in the running node"
+PENDING_VISIBLE=false
+for i in $(seq 1 10); do
+    PENDING_RESPONSE=$(curl -s -H "Authorization: Bearer $JWT_TOKEN" http://127.0.0.1:8545/rpc/connect/intents/pending)
+    echo "Pending intents (attempt $i/10):"
+    echo "$PENDING_RESPONSE" | jq .
+    if echo "$PENDING_RESPONSE" | grep -q "$INTENT_ID"; then
+        echo "✅ Intent appears in the node's pending intents"
+        PENDING_VISIBLE=true
+        break
+    fi
+    echo "⏳ Intent not visible yet, retrying..."
+    sleep 1
+done
+if [[ "$PENDING_VISIBLE" != "true" ]]; then
+    echo "❌ Intent did not appear in the running node's pending intents after waiting."
+    exit 1
+fi
+
+echo ""
+echo "📊 Step 3: Check intent status"
 sleep 2
-STATUS_RESPONSE=$(curl -s http://127.0.0.1:8545/rpc/connect/intent/$INTENT_ID)
+STATUS_RESPONSE=$(curl -s -H "Authorization: Bearer $JWT_TOKEN" http://127.0.0.1:8545/rpc/connect/intent/$INTENT_ID)
 echo "Intent status:"
 echo "$STATUS_RESPONSE" | jq .
 
 echo ""
-echo "🔗 Step 3: Build Sepolia relay transaction"
-RELAY_RESPONSE=$(curl -s http://127.0.0.1:8545/rpc/connect/intent/$INTENT_ID/relay_tx)
+echo "🔗 Step 4: Build Sepolia relay transaction"
+RELAY_RESPONSE=$(curl -s -H "Authorization: Bearer $JWT_TOKEN" http://127.0.0.1:8545/rpc/connect/intent/$INTENT_ID/relay_tx)
 echo "Relay transaction:"
 echo "$RELAY_RESPONSE" | jq .
 

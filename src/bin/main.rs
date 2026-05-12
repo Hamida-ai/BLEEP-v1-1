@@ -361,7 +361,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
             chain_id: ChainId::BLEEP,
             enable_layer4: true,
             enable_layer3: true,
-            enable_layer2: false,
+            enable_layer2: true,
             enable_layer1: true,
             data_directory: PathBuf::from("/tmp/bleep-connect"),
             commitment_chain_block_interval_secs: 6,
