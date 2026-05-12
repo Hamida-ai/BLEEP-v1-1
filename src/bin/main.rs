@@ -496,6 +496,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
         .with_connect_orchestrator(Arc::clone(&connect_orchestrator))
         .with_pat_registry(Arc::clone(&pat_registry))
         .with_transaction_pool(Arc::clone(&tx_pool))
+        .with_blockchain(Arc::clone(&blockchain))
         .with_auth_service(Arc::clone(&auth_service));
 
     // Relay FinalizedBlock events into Scheduler + metrics + economics
