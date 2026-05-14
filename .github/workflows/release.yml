@@ -1,0 +1,163 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+*"   # v0.4.0, v0.4.0-pre-testnet, v1.0.0
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  # ------------------------------------------------------------------ #
+  #  Build release binaries for Linux (amd64 + arm64)                   #
+  # ------------------------------------------------------------------ #
+  build-release:
+    name: Build Release (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-22.04
+            archive: bleep-linux-amd64
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-22.04
+            archive: bleep-linux-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies (amd64)
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libclang-dev clang llvm-dev \
+            librocksdb-dev libsnappy-dev liblz4-dev libzstd-dev \
+            protobuf-compiler libssl-dev pkg-config
+
+      - name: Install cross-compilation tools (arm64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+            libclang-dev clang llvm-dev \
+            protobuf-compiler libssl-dev pkg-config
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-release-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build release binaries
+        run: |
+          cargo build --release --bins \
+            --target ${{ matrix.target }}
+
+      - name: Package binaries
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/bleep dist/
+          cp target/${{ matrix.target }}/release/bleep_admin dist/ 2>/dev/null || true
+          cp target/${{ matrix.target }}/release/bleep-executor dist/ 2>/dev/null || true
+          cp README.md BUILDING.md LICENSE dist/
+          cd dist
+          tar czf ../${{ matrix.archive }}.tar.gz .
+          sha256sum ../${{ matrix.archive }}.tar.gz > ../${{ matrix.archive }}.tar.gz.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: |
+            ${{ matrix.archive }}.tar.gz
+            ${{ matrix.archive }}.tar.gz.sha256
+          retention-days: 1
+
+  # ------------------------------------------------------------------ #
+  #  Publish GitHub Release                                              #
+  # ------------------------------------------------------------------ #
+  publish:
+    name: Publish Release
+    runs-on: ubuntu-22.04
+    needs: build-release
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Extract tag name
+        id: tag
+        run: echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Extract changelog entry
+        id: changelog
+        run: |
+          VERSION=${{ steps.tag.outputs.TAG }}
+          # Pull the matching section from CHANGELOG.md
+          awk "/^## \[?${VERSION}\]?/{found=1; next} found && /^## /{exit} found{print}" \
+            CHANGELOG.md > release_notes.txt || echo "See CHANGELOG.md for details." > release_notes.txt
+          echo "NOTES<<EOF" >> $GITHUB_OUTPUT
+          cat release_notes.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "BLEEP ${{ steps.tag.outputs.TAG }} — Quantum Trust Network"
+          body: |
+            ## BLEEP ${{ steps.tag.outputs.TAG }}
+
+            ${{ steps.changelog.outputs.NOTES }}
+
+            ---
+
+            ### Verification
+
+            All binaries are SHA-256 checksummed. Verify before running:
+
+            ```bash
+            sha256sum -c bleep-linux-amd64.tar.gz.sha256
+            ```
+
+            ### Quick Start
+
+            ```bash
+            tar xzf bleep-linux-amd64.tar.gz
+            ./bleep
+            ```
+
+            ### What's in this release
+            - `bleep` — main node binary
+            - `bleep_admin` — admin CLI
+            - `bleep-executor` — cross-chain executor
+            - `BUILDING.md` — build from source instructions
+            - `LICENSE` — Apache 2.0
+
+            ---
+            *Post-quantum cryptography: SPHINCS+-SHAKE-256f-simple (FIPS 205) · Kyber-1024/ML-KEM-1024 (FIPS 203) · Winterfell STARK proofs*
+          draft: false
+          prerelease: ${{ contains(steps.tag.outputs.TAG, '-') }}
+          files: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.sha256
