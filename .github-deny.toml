@@ -1,0 +1,99 @@
+# cargo-deny configuration for BLEEP
+# https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+targets = [
+    { triple = "x86_64-unknown-linux-gnu" },
+    { triple = "aarch64-unknown-linux-gnu" },
+]
+
+# ------------------------------------------------------------------ #
+#  LICENSE POLICY                                                      #
+# ------------------------------------------------------------------ #
+[licenses]
+version = 2
+# Allowed licenses for BLEEP (Apache 2.0 project)
+allow = [
+    "Apache-2.0",
+    "MIT",
+    "MIT-0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2016",
+    "CC0-1.0",
+    "Zlib",
+    "OpenSSL",
+    "MPL-2.0",       # Some crypto crates
+]
+deny = [
+    "GPL-2.0",
+    "GPL-3.0",
+    "LGPL-2.0",
+    "LGPL-3.0",
+    "AGPL-3.0",
+]
+copyleft = "warn"
+allow-osi-fsf-free = "neither"
+default = "deny"
+confidence-threshold = 0.8
+
+# Exceptions for specific crates where license detection is tricky
+exceptions = [
+    { allow = ["OpenSSL"], name = "ring" },
+    { allow = ["ISC", "MIT", "OpenSSL"], name = "webpki" },
+]
+
+# ------------------------------------------------------------------ #
+#  BANNED CRATES                                                       #
+# ------------------------------------------------------------------ #
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+highlight = "all"
+
+# Crates that must never appear in the dependency tree
+deny = [
+    # Classical EC cryptography — must not appear in PQ boundary crates
+    { name = "p256", reason = "Classical EC — violates PQ boundary" },
+    { name = "k256", reason = "secp256k1 — not post-quantum secure" },
+    { name = "secp256k1", reason = "Classical EC — not post-quantum secure" },
+    # Insecure hash functions
+    { name = "md5", reason = "MD5 is cryptographically broken" },
+    { name = "sha1", reason = "SHA-1 is cryptographically broken" },
+]
+
+# Allow specific duplicate versions that are unavoidable
+skip = [
+    # Common version conflicts in the Rust async ecosystem
+    { name = "syn", version = "1" },     # syn 1 and 2 coexist
+    { name = "bitflags", version = "1" },
+]
+
+# ------------------------------------------------------------------ #
+#  VULNERABILITY ADVISORIES                                            #
+# ------------------------------------------------------------------ #
+[advisories]
+version = 2
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+vulnerability = "deny"
+unmaintained = "warn"
+yanked = "deny"
+notice = "warn"
+
+ignore = [
+    # Add any acknowledged/accepted advisories here with justification
+    # { id = "RUSTSEC-YYYY-NNNN", reason = "Not applicable because..." },
+]
+
+# ------------------------------------------------------------------ #
+#  SOURCES                                                             #
+# ------------------------------------------------------------------ #
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = [
+    # Add any trusted git dependencies here
+]
