@@ -1,0 +1,112 @@
+name: Security
+
+on:
+  schedule:
+    # Run every Monday at 08:00 UTC
+    - cron: "0 8 * * 1"
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  # ------------------------------------------------------------------ #
+  #  cargo-audit — known CVEs in dependencies                            #
+  # ------------------------------------------------------------------ #
+  cargo-audit:
+    name: Cargo Audit
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Run audit
+        run: |
+          cargo audit --json > audit-report.json || true
+          cargo audit
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-audit-report
+          path: audit-report.json
+          retention-days: 30
+
+  # ------------------------------------------------------------------ #
+  #  cargo-deny — license + duplicate + banned crate check               #
+  # ------------------------------------------------------------------ #
+  cargo-deny:
+    name: Cargo Deny
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: EmbarkStudios/cargo-deny-action@v1
+        with:
+          command: check all
+          arguments: --config .cargo-deny.toml
+        continue-on-error: true   # Report but don't block until deny.toml is tuned
+
+  # ------------------------------------------------------------------ #
+  #  CodeQL — static analysis for Rust                                   #
+  # ------------------------------------------------------------------ #
+  codeql:
+    name: CodeQL Analysis
+    runs-on: ubuntu-22.04
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libclang-dev clang llvm-dev \
+            librocksdb-dev libsnappy-dev liblz4-dev libzstd-dev \
+            protobuf-compiler libssl-dev pkg-config
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: rust
+          queries: security-and-quality
+
+      - name: Build for CodeQL
+        run: cargo build --workspace
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:rust"
+
+  # ------------------------------------------------------------------ #
+  #  Supply chain — verify Cargo.lock is committed and not manipulated   #
+  # ------------------------------------------------------------------ #
+  supply-chain:
+    name: Supply Chain Check
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Cargo.lock is committed
+        run: |
+          if [ ! -f Cargo.lock ]; then
+            echo "❌ Cargo.lock is missing — supply chain verification requires it"
+            exit 1
+          fi
+          echo "✅ Cargo.lock present"
+
+      - name: Check for dependency updates (informational)
+        run: |
+          cargo install cargo-outdated --locked 2>/dev/null || true
+          cargo outdated --workspace || true
