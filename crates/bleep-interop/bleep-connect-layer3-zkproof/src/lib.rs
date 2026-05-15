@@ -110,6 +110,23 @@ impl ProofGenerator {
         })
     }
 
+    pub fn new_with_signing_key(signing_key: SecretKey) -> BleepConnectResult<Self> {
+        Ok(Self {
+            cache: Arc::new(ProofCache::new(1_000)),
+            signing_key,
+        })
+    }
+
+    pub fn new_shared() -> BleepConnectResult<(ProofGenerator, ProofVerifier)> {
+        let (public_key, signing_key) = SignatureScheme::keygen_from_seed(L3_PROOF_KEY_SEED)
+            .map_err(|e| {
+                BleepConnectError::InternalError(format!("Shared proof key generation failed: {e:?}"))
+            })?;
+        let generator = ProofGenerator::new_with_signing_key(signing_key)?;
+        let verifier = ProofVerifier::new_with_public_key(public_key)?;
+        Ok((generator, verifier))
+    }
+
     /// Generate a post-quantum transfer proof for a completed cross-chain transfer.
     pub fn generate_proof(&self, input: &ProofInput) -> BleepConnectResult<ZKProof> {
         let proof_id = self.compute_proof_id(input);
@@ -179,6 +196,20 @@ impl ProofVerifier {
                 BleepConnectError::InternalError(format!("Verifier key generation failed: {e:?}"))
             })?;
         Ok(Self { public_key })
+    }
+
+    pub fn new_with_public_key(public_key: PublicKey) -> BleepConnectResult<Self> {
+        Ok(Self { public_key })
+    }
+
+    pub fn new_shared() -> BleepConnectResult<(ProofGenerator, ProofVerifier)> {
+        let (public_key, signing_key) = SignatureScheme::keygen_from_seed(L3_PROOF_KEY_SEED)
+            .map_err(|e| {
+                BleepConnectError::InternalError(format!("Shared proof key generation failed: {e:?}"))
+            })?;
+        let generator = ProofGenerator::new_with_signing_key(signing_key)?;
+        let verifier = ProofVerifier::new_with_public_key(public_key)?;
+        Ok((generator, verifier))
     }
 
     /// Verify a post-quantum transfer proof. Returns true if valid.

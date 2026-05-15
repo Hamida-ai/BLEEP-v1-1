@@ -107,8 +107,7 @@ pub struct L3BatchProver {
 
 impl L3BatchProver {
     pub fn new(srs_id: &str) -> BleepConnectResult<Self> {
-        let generator = ProofGenerator::new()?;
-        let verifier = ProofVerifier::new()?;
+        let (generator, verifier) = ProofGenerator::new_shared()?;
 
         Ok(Self {
             srs_id: srs_id.into(),
@@ -383,7 +382,7 @@ mod tests {
             "BLEEP",
             1,
         );
-        let mut prover = L3BatchProver::new("test-srs");
+        let mut prover = L3BatchProver::new("test-srs").expect("Prover initialization failed");
         prover.enqueue(id);
         let proof = prover.prove_batch([0xAA; 32], [0xBB; 32]).unwrap();
         assert!(!bridge.submit_proof(&id, proof));

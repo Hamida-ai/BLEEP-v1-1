@@ -1,55 +1,46 @@
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
-use std::thread;
+use std::sync::Arc;
 use std::time::Duration;
 
-use core::block::block::Block;
-use core::blockchain_state::BlockchainState;
-use core::p2p::message_protocol::P2PMessage;
-use core::p2p::P2PNode;
-use core::transaction::transaction::Transaction;
+use bleep_core::blockchain::BlockchainState;
+use bleep_p2p::p2p_node::{NodeHandle, P2PNode, P2PNodeConfig};
 
-#[test]
-fn test_block_propagation_between_nodes() {
-    // Set up blockchain states
-    let blockchain1 = Arc::new(Mutex::new(BlockchainState::new()));
-    let blockchain2 = Arc::new(Mutex::new(BlockchainState::new()));
+async fn start_node(port: u16) -> (Arc<P2PNode>, NodeHandle) {
+    let config = P2PNodeConfig {
+        listen_addr: SocketAddr::from(([127, 0, 0, 1], port)),
+        bootstrap_peers: vec![],
+        peer_manager_config: Default::default(),
+    };
+    P2PNode::start(config).await.expect("Failed to start P2P node")
+}
 
-    // Initialize nodes
-    let node1 = P2PNode::new(
-        "Node1".into(),
-        "127.0.0.1:9101".parse::<SocketAddr>().unwrap(),
-        blockchain1.clone(),
-    );
-    let node2 = P2PNode::new(
-        "Node2".into(),
-        "127.0.0.1:9102".parse::<SocketAddr>().unwrap(),
-        blockchain2.clone(),
-    );
+#[tokio::test]
+async fn test_p2p_node_connects_peer_and_reports_peer_count() {
+    let (node1, handle1) = start_node(17001).await;
+    let (node2, handle2) = start_node(17002).await;
 
-    // Start both nodes
-    node1.start();
-    node2.start();
+    tokio::time::sleep(Duration::from_millis(250)).await;
 
-    thread::sleep(Duration::from_secs(2)); // Wait for nodes to bind and be ready
+    let challenge = b"handshake-challenge";
+    let proof = node2
+        .make_identity_proof(challenge)
+        .expect("Failed to create identity proof");
 
-    // Create and send block from node1 to node2
-    let tx = Transaction::new("alice", "bob", 500, "zk_sig");
-    let block = Block::new(1, "0".to_string(), vec![tx.clone()]).unwrap();
+    let peer_id = node1
+        .connect_peer(
+            SocketAddr::from(([127, 0, 0, 1], 17002)),
+            node2.identity.ed_keypair.public_key_bytes(),
+            node2.identity.sphincs_keypair.public_key.0.clone(),
+            challenge,
+            &proof,
+        )
+        .await
+        .expect("Failed to connect peer");
 
-    node1.send_message(
-        "127.0.0.1:9102".parse().unwrap(),
-        P2PMessage::NewBlock(block.clone()),
-    );
+    assert!(!peer_id.as_bytes().is_empty(), "Peer ID must be valid");
+    assert_eq!(node1.peer_count(), 1, "Node1 should report one peer");
+    assert_eq!(node2.peer_count(), 0, "Node2 should report zero peers until it initiates a connection");
 
-    thread::sleep(Duration::from_secs(2)); // Wait for message to be processed
-
-    // Check blockchain2 state
-    let chain2 = blockchain2.lock().unwrap();
-    assert_eq!(
-        chain2.chain.len(),
-        2,
-        "Node2 should have received the new block"
-    );
-    assert_eq!(chain2.chain[1].transactions[0], tx);
+    handle1.shutdown().await;
+    handle2.shutdown().await;
 }

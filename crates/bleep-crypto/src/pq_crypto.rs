@@ -299,7 +299,7 @@ impl KyberKem {
 /// NIST PQC Level 5 (≥256-bit post-quantum security).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DigitalSignature {
-    /// Raw SPHINCS+-SHAKE-256f-simple detached signature bytes (7,856 bytes).
+    /// Raw SPHINCS+-SHAKE-256f-simple detached signature bytes (49,856 bytes).
     sig_bytes: Vec<u8>,
     /// SHA3-256 of the signed message (for quick pre-check).
     message_hash: [u8; 32],
@@ -307,9 +307,9 @@ pub struct DigitalSignature {
 
 impl DigitalSignature {
     /// SPHINCS+-SHAKE-256f-simple detached signature length.
-    pub const SIG_LEN: usize = 7_856;
+    pub const SIG_LEN: usize = 49_856;
 
-    /// Serialise to `message_hash(32) || sig_bytes(7856)`.
+    /// Serialise to `message_hash(32) || sig_bytes(49856)`.
     pub fn as_bytes(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(32 + Self::SIG_LEN);
         out.extend_from_slice(&self.message_hash);
