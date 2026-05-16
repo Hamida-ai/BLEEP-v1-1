@@ -1,0 +1,18 @@
+[package]
+name = "governance-demo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bleep-governance = { path = "../../crates/bleep-governance" }
+clap = { version = "4.2", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+shell-words = "1.1"
+ring = "0.16"
+rand = "0.8"
+aes-gcm = "0.10"
+dirs = "4.0"
+base64 = "0.21"
+hex = "0.4"
+rpassword = "7.0"

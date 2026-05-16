@@ -120,7 +120,7 @@ mod phase5_comprehensive_tests {
         .add_rule_change(RuleChange::new(
             "SHARD_SPLIT_THRESHOLD".to_string(),
             1_000_000,
-            100_000_000_000, // Way out of bounds!
+            100_000_000_000u128, // Way out of bounds!
             Default::default(),
             "Evil change".to_string(),
         ))

@@ -9,10 +9,11 @@
 //! - Governance event log for audit
 
 use std::collections::HashMap;
+use serde::{Serialize, Deserialize};
 
 // ── Protocol parameters that governance can change ────────────────────────────
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum GovernableParam {
     BlockIntervalMs(u64),
     MaxTxsPerBlock(u32),
@@ -97,7 +98,7 @@ impl GovernableParam {
 
 // ── Proposal ──────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProposalState {
     Active,
     Passed,
@@ -106,7 +107,7 @@ pub enum ProposalState {
     Executed,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Proposal {
     pub id: u64,
     pub proposer: String,
@@ -125,7 +126,7 @@ pub struct Proposal {
     pub execution_tx: Option<String>, // on-chain execution tx hash
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Vote {
     Yes,
     No,
@@ -135,7 +136,7 @@ pub enum Vote {
 
 // ── GovernanceConfig ──────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GovernanceConfig {
     pub voting_period_blocks: u64,
     pub quorum_bps: u32,         // minimum participation (e.g., 1000 = 10%)
@@ -168,7 +169,7 @@ pub struct LiveGovernanceEngine {
     current_block: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GovernanceEvent {
     pub block: u64,
     pub kind: String,
@@ -405,6 +406,45 @@ impl LiveGovernanceEngine {
             .values()
             .filter(|p| p.state == ProposalState::Active)
             .collect()
+    }
+
+    /// Export engine state as JSON (proposals, events, current block, next id)
+    pub fn export_state(&self) -> Result<String, serde_json::Error> {
+        #[derive(Serialize)]
+        struct Export<'a> {
+            config: &'a GovernanceConfig,
+            proposals: &'a HashMap<u64, Proposal>,
+            event_log: &'a Vec<GovernanceEvent>,
+            next_id: u64,
+            current_block: u64,
+        }
+        let e = Export {
+            config: &self.config,
+            proposals: &self.proposals,
+            event_log: &self.event_log,
+            next_id: self.next_id,
+            current_block: self.current_block,
+        };
+        serde_json::to_string_pretty(&e)
+    }
+
+    /// Import engine state from JSON produced by `export_state`.
+    pub fn import_state(&mut self, json: &str) -> Result<(), serde_json::Error> {
+        #[derive(Deserialize)]
+        struct Import {
+            config: GovernanceConfig,
+            proposals: HashMap<u64, Proposal>,
+            event_log: Vec<GovernanceEvent>,
+            next_id: u64,
+            current_block: u64,
+        }
+        let imp: Import = serde_json::from_str(json)?;
+        self.config = imp.config;
+        self.proposals = imp.proposals;
+        self.event_log = imp.event_log;
+        self.next_id = imp.next_id;
+        self.current_block = imp.current_block;
+        Ok(())
     }
 }
 

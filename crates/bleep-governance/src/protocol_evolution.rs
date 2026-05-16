@@ -12,7 +12,7 @@
 
 use crate::ai_reputation::{AIReputationTracker, ProposalOutcome};
 use crate::apip::{APIPStatus, APIP};
-use crate::protocol_rules::ProtocolRuleSet;
+use crate::protocol_rules::{ProtocolRuleSet, RuleValue};
 use crate::safety_constraints::{SafetyConstraintsEngine, ValidationReport};
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
@@ -127,10 +127,10 @@ pub struct ActivationRecord {
     pub rule_name: String,
 
     /// Old rule value
-    pub old_value: u64,
+    pub old_value: RuleValue,
 
     /// New rule value
-    pub new_value: u64,
+    pub new_value: RuleValue,
 
     /// Epoch when activated
     pub activation_epoch: u64,
@@ -492,7 +492,7 @@ impl ProtocolEvolutionOrchestrator {
             .unwrap_or(95);
 
         self.ai_reputation
-            .apply_global_decay(current_epoch, decay_rate);
+            .apply_global_decay(current_epoch, decay_rate.try_into().unwrap_or(95));
     }
 
     /// Get activation history (for auditing)
@@ -506,6 +506,7 @@ mod tests {
     use super::*;
     use crate::apip::{AIModelMetadata, APIPBuilder, RuleChange};
     use crate::protocol_rules::ProtocolRuleSetFactory;
+    use crate::{RuleVersion, RiskLevel};
 
     fn create_test_orchestrator() -> ProtocolEvolutionOrchestrator {
         let genesis = ProtocolRuleSetFactory::create_genesis().unwrap();

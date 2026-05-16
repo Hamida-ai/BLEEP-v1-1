@@ -10,7 +10,7 @@
 // 6. Worst-case scenarios are simulated deterministically
 
 use crate::apip::APIP;
-use crate::protocol_rules::ProtocolRuleSet;
+use crate::protocol_rules::{ProtocolRuleSet, RuleValue};
 use log::info;
 use thiserror::Error;
 
@@ -348,7 +348,7 @@ impl SafetyConstraintsEngine {
                 // At ~100 state bytes per validator record
                 let min_safe_threshold = 32 * 100;
 
-                let scenario_passed = change.new_value >= min_safe_threshold as u64;
+                let scenario_passed = change.new_value >= min_safe_threshold as RuleValue;
                 let result = ConstraintCheckResult {
                     passed: scenario_passed,
                     constraint_name: "SCENARIO_MIN_SHARD_SIZE".to_string(),
@@ -473,6 +473,7 @@ impl SafetyConstraintsEngine {
 mod tests {
     use super::*;
     use crate::protocol_rules::{ProtocolRuleSetFactory, RuleBounds};
+    use crate::SafetyBounds;
 
     #[test]
     fn test_validation_report_creation() {

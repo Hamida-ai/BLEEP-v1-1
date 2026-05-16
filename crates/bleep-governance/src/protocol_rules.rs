@@ -38,7 +38,7 @@ pub enum ProtocolRuleError {
 }
 
 /// Type for all numeric protocol rule values
-pub type RuleValue = u64;
+pub type RuleValue = u128;
 
 /// Bounded range constraint for rule values
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -334,8 +334,11 @@ impl ProtocolRuleSetFactory {
 
         rules.add_rule(ProtocolRule::new(
             "MIN_VALIDATOR_STAKE".to_string(),
-            1000 * 10_u64.pow(18), // 1000 BLP with 18 decimals
-            RuleBounds::new(100 * 10_u64.pow(18), 10_000 * 10_u64.pow(18))?,
+            1000u128 * 10u128.pow(18), // 1000 BLP with 18 decimals
+            RuleBounds::new(
+                100u128 * 10u128.pow(18),
+                10_000u128 * 10u128.pow(18),
+            )?,
             "Minimum stake to become a validator".to_string(),
             true,
             0,

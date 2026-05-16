@@ -30,6 +30,7 @@ members = [
     "crates/bleep-vm",
     "crates/bleep-wallet-core",
     "crates/bleep-zkp",
+    "tools/governance-demo",
 ]
 
 [package]

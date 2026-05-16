@@ -13,7 +13,7 @@
 
 use crate::ai_reputation::AIReputationTracker;
 use crate::apip::APIP;
-use crate::protocol_rules::ProtocolRuleSet;
+use crate::protocol_rules::{ProtocolRuleSet, RuleValue};
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -98,10 +98,10 @@ pub struct OptimizationSuggestion {
     pub rule_name: String,
 
     /// Current value
-    pub current_value: u64,
+    pub current_value: RuleValue,
 
     /// Suggested value
-    pub suggested_value: u64,
+    pub suggested_value: RuleValue,
 
     /// Rationale
     pub rationale: String,
@@ -220,8 +220,12 @@ impl AIHooks {
         for change in &proposal.rule_changes {
             if let Ok(_rule) = ruleset.get_rule(&change.rule_name) {
                 // Compute impact deterministically
-                let value_change = (change.new_value as i64 - change.old_value as i64).abs() as u64;
-                let _pct_change = (value_change * 100) / change.old_value.max(1);
+                let value_change = if change.new_value >= change.old_value {
+                    change.new_value - change.old_value
+                } else {
+                    change.old_value - change.new_value
+                };
+                let _pct_change = (value_change * 100u128) / change.old_value.max(1);
 
                 match change.rule_name.as_str() {
                     "SHARD_SPLIT_THRESHOLD" => {

@@ -15,6 +15,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::convert::TryInto;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -102,17 +103,27 @@ pub struct RuleChange {
 
 impl RuleChange {
     /// Create a new rule change
-    pub fn new(
+    pub fn new<T, U>(
         rule_name: String,
-        old_value: RuleValue,
-        new_value: RuleValue,
+        old_value: T,
+        new_value: U,
         rule_version: RuleVersion,
         justification: String,
-    ) -> Self {
+    ) -> Self
+    where
+        T: TryInto<RuleValue>,
+        U: TryInto<RuleValue>,
+        T::Error: std::fmt::Debug,
+        U::Error: std::fmt::Debug,
+    {
         RuleChange {
             rule_name,
-            old_value,
-            new_value,
+            old_value: old_value
+                .try_into()
+                .expect("Invalid old_value for RuleChange"),
+            new_value: new_value
+                .try_into()
+                .expect("Invalid new_value for RuleChange"),
             rule_version,
             justification,
         }

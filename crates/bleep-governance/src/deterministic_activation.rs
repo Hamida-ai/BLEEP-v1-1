@@ -12,7 +12,7 @@
 use crate::apip::APIP;
 use crate::invariant_monitoring::GlobalInvariantMonitor;
 use crate::protocol_evolution::ActivationRecord;
-use crate::protocol_rules::ProtocolRuleSet;
+use crate::protocol_rules::{ProtocolRuleSet, RuleValue};
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -80,7 +80,7 @@ pub struct ActivationPlan {
     pub state: ActivationState,
 
     /// All rules to be changed
-    pub rule_changes: Vec<(String, u64, u64)>, // (rule_name, old_value, new_value)
+    pub rule_changes: Vec<(String, RuleValue, RuleValue)>, // (rule_name, old_value, new_value)
 
     /// Version to transition to
     pub new_protocol_version: u32,
@@ -94,7 +94,7 @@ impl ActivationPlan {
         proposal_id: String,
         target_epoch: u64,
         target_height: u64,
-        rule_changes: Vec<(String, u64, u64)>,
+        rule_changes: Vec<(String, RuleValue, RuleValue)>,
         new_protocol_version: u32,
     ) -> Self {
         ActivationPlan {
