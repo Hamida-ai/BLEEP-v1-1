@@ -14,5 +14,5 @@ hex            = "0.4"
 tracing        = "0.1"
 winterfell     = "0.13.1"
 winter-air     = "0.13.1"
-bincode = "2.0.1"
+bincode = { version = "2.0.1", features = ["serde"] }
 bleep-crypto   = { path = "../bleep-crypto" }

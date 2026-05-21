@@ -110,12 +110,6 @@ pub enum VmError {
 pub type VmResult<T> = Result<T, VmError>;
 
 // Convenience conversions
-impl From<bincode::Error> for VmError {
-    fn from(e: bincode::Error) -> Self {
-        VmError::Serialization(e.to_string())
-    }
-}
-
 impl From<std::io::Error> for VmError {
     fn from(e: std::io::Error) -> Self {
         VmError::Internal(e.to_string())

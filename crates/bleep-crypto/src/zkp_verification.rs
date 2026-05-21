@@ -36,7 +36,7 @@ pub enum BLEEPError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
     #[error("Bincode error: {0}")]
-    Bincode(#[from] Box<bincode::ErrorKind>),
+    Bincode(String),
     /// C-03 FIX: Added so finalize_block can return a typed error instead of
     /// recursing indefinitely.
     #[error("Consensus failed: {0}")]

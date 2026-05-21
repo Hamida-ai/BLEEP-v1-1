@@ -59,12 +59,12 @@ pub struct MerklePath {
 impl PostQuantumProof {
     /// Serialize to bytes
     pub fn to_bytes(&self) -> Result<Vec<u8>, String> {
-        bincode::serialize(self).map_err(|e| format!("Serialization failed: {e}"))
+        bincode::serde::encode_to_vec(&*self, bincode::config::standard()).map_err(|e| format!("Serialization failed: {e}"))
     }
 
     /// Deserialize from bytes
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, String> {
-        bincode::deserialize(bytes).map_err(|e| format!("Deserialization failed: {e}"))
+        bincode::serde::decode_from_slice::<Self, _>(bytes, bincode::config::standard()).map(|(v, _)| v).map_err(|e| format!("Deserialization failed: {e}"))
     }
 
     /// Proof size in bytes

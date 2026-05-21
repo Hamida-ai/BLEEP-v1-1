@@ -55,7 +55,7 @@ impl ChainStorage {
             .cf_handle(CF_BLOCKS)
             .ok_or_else(|| BleepConnectError::DatabaseError("blocks CF missing".into()))?;
         let key = block.block_number.to_be_bytes();
-        let value = bincode::serialize(block)
+        let value = bincode::serde::encode_to_vec(block, bincode::config::standard())
             .map_err(|e| BleepConnectError::SerializationError(e.to_string()))?;
         self.db
             .put_cf(&cf, key, value)
@@ -82,7 +82,7 @@ impl ChainStorage {
             .map_err(|e| BleepConnectError::DatabaseError(e.to_string()))?
         {
             Some(bytes) => {
-                let block = bincode::deserialize(&bytes)
+                let block = bincode::serde::decode_from_slice::<CommitmentBlock, _>(&bytes, bincode::config::standard()).map(|(v, _)| v)
                     .map_err(|e| BleepConnectError::SerializationError(e.to_string()))?;
                 Ok(Some(block))
             }
@@ -115,7 +115,7 @@ impl ChainStorage {
             .db
             .cf_handle(CF_COMMITMENTS)
             .ok_or_else(|| BleepConnectError::DatabaseError("commitments CF missing".into()))?;
-        let value = bincode::serialize(c)
+        let value = bincode::serde::encode_to_vec(c, bincode::config::standard())
             .map_err(|e| BleepConnectError::SerializationError(e.to_string()))?;
         self.db
             .put_cf(&cf, c.commitment_id, value)
@@ -133,7 +133,7 @@ impl ChainStorage {
             .map_err(|e| BleepConnectError::DatabaseError(e.to_string()))?
         {
             Some(bytes) => {
-                Ok(Some(bincode::deserialize(&bytes).map_err(|e| {
+                Ok(Some(bincode::serde::decode_from_slice::<StateCommitment, _>(&bytes, bincode::config::standard()).map(|(v, _)| v).map_err(|e| {
                     BleepConnectError::SerializationError(e.to_string())
                 })?))
             }

@@ -124,12 +124,15 @@ impl ActivationRecord {
 
     /// Compute hash of record
     fn compute_hash(&self) -> Result<Vec<u8>, BindingError> {
-        let serialized = bincode::serialize(&(
-            &self.proposal_id,
-            &self.outcome,
-            self.activation_epoch,
-            self.block_height,
-        ))
+        let serialized = bincode::serde::encode_to_vec(
+            &(
+                &self.proposal_id,
+                &self.outcome,
+                self.activation_epoch,
+                self.block_height,
+            ),
+            bincode::config::standard(),
+        )
         .map_err(|e| BindingError::SerializationError(e.to_string()))?;
 
         let mut hasher = Sha256::new();

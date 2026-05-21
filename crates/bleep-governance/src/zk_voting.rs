@@ -324,7 +324,7 @@ impl VotingBallot {
 
     /// Hash this ballot for inclusion in blocks
     pub fn hash(&self) -> Result<Vec<u8>, ZKVotingError> {
-        let serialized = bincode::serialize(self)
+        let serialized = bincode::serde::encode_to_vec(self, bincode::config::standard())
             .map_err(|e| ZKVotingError::SerializationError(e.to_string()))?;
 
         let mut hasher = Sha256::new();
@@ -475,10 +475,10 @@ impl ZKVotingEngine {
         tally: &VoteTally,
         revealed_votes: &HashMap<Vec<u8>, bool>,
     ) -> Result<TallyProof, ZKVotingError> {
-        let tally_data = bincode::serialize(tally)
+        let tally_data = bincode::serde::encode_to_vec(tally, bincode::config::standard())
             .map_err(|e| ZKVotingError::SerializationError(e.to_string()))?;
 
-        let votes_data = bincode::serialize(revealed_votes)
+        let votes_data = bincode::serde::encode_to_vec(revealed_votes, bincode::config::standard())
             .map_err(|e| ZKVotingError::SerializationError(e.to_string()))?;
 
         let mut hasher = Sha256::new();

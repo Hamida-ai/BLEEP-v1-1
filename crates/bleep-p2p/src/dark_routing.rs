@@ -161,7 +161,7 @@ impl DarkRouting {
         local_id:      &NodeId,
         shared_secret: &[u8],
     ) -> P2PResult<(Vec<u8>, Option<NodeId>)> {
-        let layer: OnionLayer = bincode::deserialize(layer_bytes)
+        let layer: OnionLayer = bincode::serde::decode_from_slice(layer_bytes, bincode::config::standard()).map(|(v, _)| v)
             .map_err(|e| P2PError::Serialization(e.to_string()))?;
 
         let (inner, next_hop) = self.router.peel(&layer, local_id, shared_secret)?;

@@ -522,9 +522,9 @@ impl PATStore {
         let token_key  = format!("token:{}", token.symbol);
         let ledger_key = format!("ledger:{}", token.symbol);
 
-        let token_bytes  = bincode::serialize(token)
+        let token_bytes  = bincode::serde::encode_to_vec(token, bincode::config::standard())
             .map_err(|e| format!("serialize token: {e}"))?;
-        let ledger_bytes = bincode::serialize(ledger)
+        let ledger_bytes = bincode::serde::encode_to_vec(ledger, bincode::config::standard())
             .map_err(|e| format!("serialize ledger: {e}"))?;
 
         let mut batch = WriteBatch::default();
@@ -556,7 +556,7 @@ impl PATStore {
             .unwrap_or(0);
 
         let event_key   = format!("event:{:016x}", seq);
-        let event_bytes = bincode::serialize(event)
+        let event_bytes = bincode::serde::encode_to_vec(event, bincode::config::standard())
             .map_err(|e| format!("serialize event: {e}"))?;
 
         let mut batch = WriteBatch::default();
@@ -587,11 +587,11 @@ impl PATStore {
                 .map_err(|_| "non-UTF8 key".to_string())?;
 
             if let Some(symbol) = key_str.strip_prefix("token:") {
-                let token: PATToken = bincode::deserialize(&value)
+                let token: PATToken = bincode::serde::decode_from_slice::<PATToken>(&value, bincode::config::standard()).map(|(v, _)| v)
                     .map_err(|e| format!("deserialize token {symbol}: {e}"))?;
                 tokens.insert(symbol.to_string(), token);
             } else if let Some(symbol) = key_str.strip_prefix("ledger:") {
-                let ledger: TokenLedger = bincode::deserialize(&value)
+                let ledger: TokenLedger = bincode::serde::decode_from_slice::<TokenLedger>(&value, bincode::config::standard()).map(|(v, _)| v)
                     .map_err(|e| format!("deserialize ledger {symbol}: {e}"))?;
                 ledgers.insert(symbol.to_string(), ledger);
             }
@@ -1190,9 +1190,9 @@ impl PATStore {
         let token_key  = format!("token:{}", token.symbol);
         let ledger_key = format!("ledger:{}", token.symbol);
 
-        let token_bytes  = bincode::serialize(token)
+        let token_bytes  = bincode::serde::encode_to_vec(token, bincode::config::standard())
             .map_err(|e| format!("serialize token: {e}"))?;
-        let ledger_bytes = bincode::serialize(ledger)
+        let ledger_bytes = bincode::serde::encode_to_vec(ledger, bincode::config::standard())
             .map_err(|e| format!("serialize ledger: {e}"))?;
 
         let mut batch = WriteBatch::default();
@@ -1224,7 +1224,7 @@ impl PATStore {
             .unwrap_or(0);
 
         let event_key   = format!("event:{:016x}", seq);
-        let event_bytes = bincode::serialize(event)
+        let event_bytes = bincode::serde::encode_to_vec(event, bincode::config::standard())
             .map_err(|e| format!("serialize event: {e}"))?;
 
         let mut batch = WriteBatch::default();
@@ -1255,11 +1255,11 @@ impl PATStore {
                 .map_err(|_| "non-UTF8 key".to_string())?;
 
             if let Some(symbol) = key_str.strip_prefix("token:") {
-                let token: PATToken = bincode::deserialize(&value)
+                let token: PATToken = bincode::serde::decode_from_slice::<PATToken>(&value, bincode::config::standard()).map(|(v, _)| v)
                     .map_err(|e| format!("deserialize token {symbol}: {e}"))?;
                 tokens.insert(symbol.to_string(), token);
             } else if let Some(symbol) = key_str.strip_prefix("ledger:") {
-                let ledger: TokenLedger = bincode::deserialize(&value)
+                let ledger: TokenLedger = bincode::serde::decode_from_slice::<TokenLedger>(&value, bincode::config::standard()).map(|(v, _)| v)
                     .map_err(|e| format!("deserialize ledger {symbol}: {e}"))?;
                 ledgers.insert(symbol.to_string(), ledger);
             }

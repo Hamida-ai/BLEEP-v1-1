@@ -297,7 +297,7 @@ impl BLEEPAdaptiveConsensus {
     /// Each iteration: `SHA-256(block_commitment || nonce_le8)` with a fresh hasher.
     #[allow(dead_code)]
     fn pow_algorithm(&mut self, block: &Block) -> bool {
-        let block_bytes = match bincode::serialize(block) {
+        let block_bytes = match bincode::serde::encode_to_vec(block, bincode::config::standard()) {
             Ok(b) => b,
             Err(e) => {
                 warn!("PoW: serialise failed: {}", e);
@@ -443,7 +443,7 @@ impl BLEEPAdaptiveConsensus {
     ///
     /// **Signed payload:** `SHA-256(bincode(block))` — 32 bytes.
     pub fn sign_block(&self, block: &Block, _validator_id: &str) -> Result<Vec<u8>, String> {
-        let block_bytes = bincode::serialize(block)
+        let block_bytes = bincode::serde::encode_to_vec(block, bincode::config::standard())
             .map_err(|e| format!("Serialise failed for block {}: {}", block.index, e))?;
         let block_hash: [u8; 32] = Sha256::digest(&block_bytes).into();
 
@@ -506,7 +506,7 @@ impl BLEEPAdaptiveConsensus {
             }
         };
 
-        let block_bytes = match bincode::serialize(block) {
+        let block_bytes = match bincode::serde::encode_to_vec(block, bincode::config::standard()) {
             Ok(b) => b,
             Err(e) => {
                 warn!("verify_signature: serialise failed: {}", e);
@@ -664,7 +664,7 @@ mod tests {
     #[test]
     fn test_pow_hash_deterministic_per_nonce() {
         let block = make_block(0);
-        let bytes = bincode::serialize(&block).unwrap();
+        let bytes = bincode::serde::encode_to_vec(block, bincode::config::standard()).unwrap();
         let commit: [u8; 32] = Sha256::digest(&bytes).into();
 
         let hash_fn = |n: u64| {

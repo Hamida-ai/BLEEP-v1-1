@@ -18,7 +18,7 @@ thiserror    = "1.0"
 # Serialisation
 serde        = { version = "1.0", features = ["derive"] }
 serde_json   = "1.0"
-bincode = "2.0.1"
+bincode = { version = "2.0.1", features = ["serde"] }
 
 # Post-quantum crypto
 pqcrypto-traits      = "0.3.5"

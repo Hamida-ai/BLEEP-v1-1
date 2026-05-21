@@ -127,13 +127,13 @@ impl ConstitutionalConstraint {
 
     /// Compute SHA256 hash of constraint
     fn compute_hash(&self) -> Result<Vec<u8>, ConstitutionError> {
-        let serialized = bincode::serialize(&(
+        let serialized = bincode::serde::encode_to_vec(&(
             &self.id,
             &self.description,
             &self.scope,
             &self.is_immutable,
             &self.validation_rules,
-        ))
+        ), bincode::config::standard())
         .map_err(|e| ConstitutionError::SerializationError(e.to_string()))?;
 
         let mut hasher = Sha256::new();
@@ -321,7 +321,7 @@ impl GovernanceAction {
 
     /// Compute hash of action
     pub fn hash(&self) -> Result<Vec<u8>, ConstitutionError> {
-        let serialized = bincode::serialize(self)
+        let serialized = bincode::serde::encode_to_vec(self, bincode::config::standard())
             .map_err(|e| ConstitutionError::SerializationError(e.to_string()))?;
 
         let mut hasher = Sha256::new();
@@ -469,12 +469,12 @@ impl BLEEPConstitution {
 
     /// Compute cryptographic hash of entire constitution
     fn compute_hash(&self) -> Result<Vec<u8>, ConstitutionError> {
-        let serialized = bincode::serialize(&(
+        let serialized = bincode::serde::encode_to_vec(&(
             &self.version,
             &self.genesis_epoch,
             &self.constraints,
             &self.amendment_count,
-        ))
+        ), bincode::config::standard())
         .map_err(|e| ConstitutionError::SerializationError(e.to_string()))?;
 
         let mut hasher = Sha256::new();

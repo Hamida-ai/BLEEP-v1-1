@@ -22,7 +22,7 @@ sha2 = "0.10"
 ring = "0.17.14"
 pqcrypto-sphincsplus = "0.7.1"
 pqcrypto-traits = "0.3.5"
-bincode = "2.0.1"
+bincode = { version = "2.0.1", features = ["serde"] }
 parking_lot = "0.12"
 tokio = { version = "1.36", features = ["full"] }
 

@@ -235,7 +235,7 @@ impl MessageProtocol {
     /// Encode a `SecureMessage` as a length-prefixed frame: `[u32 BE length][bincode bytes]`.
     pub fn encode_frame(msg: &SecureMessage) -> P2PResult<Bytes> {
         let encoded =
-            bincode::serialize(msg).map_err(|e| P2PError::Serialization(e.to_string()))?;
+            bincode::serde::encode_to_vec(msg, bincode::config::standard()).map_err(|e| P2PError::Serialization(e.to_string()))?;
         if encoded.len() > MAX_FRAME_BYTES {
             return Err(P2PError::Serialization(format!(
                 "Frame too large: {} bytes",
@@ -275,7 +275,7 @@ impl MessageProtocol {
             })?
             .map_err(P2PError::Io)?;
 
-        bincode::deserialize(&payload).map_err(|e| P2PError::Serialization(e.to_string()))
+        bincode::serde::decode_from_slice::<SecureMessage, _>(&payload, bincode::config::standard()).map(|(v, _)| v).map_err(|e| P2PError::Serialization(e.to_string()))
     }
 
     // ── SEND ─────────────────────────────────────────────────────────────────

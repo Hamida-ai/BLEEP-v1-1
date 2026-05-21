@@ -8,7 +8,7 @@ license = "MIT OR Apache-2.0"
 bleep-connect-types  = { path = "../bleep-connect-types" }
 bleep-connect-crypto = { path = "../bleep-connect-crypto" }
 serde      = { version = "1.0", features = ["derive"] }
-bincode = "2.0.1"
+bincode = { version = "2.0.1", features = ["serde"] }
 rocksdb    = { version = "0.21", features = ["multi-threaded-cf"] }
 dashmap    = "5.5"
 tokio      = { version = "1.36", features = ["full"] }

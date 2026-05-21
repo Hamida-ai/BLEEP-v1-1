@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
-bincode = "2.0.1"
+bincode = { version = "2.0.1", features = ["serde"] }
 
 # Cryptographic Hashing
 sha3 = "0.10"

@@ -213,7 +213,7 @@ impl UpgradePayload {
 
     /// Compute hash of upgrade payload
     pub fn compute_hash(&self) -> Result<Vec<u8>, UpgradeError> {
-        let serialized = bincode::serialize(self)
+        let serialized = bincode::serde::encode_to_vec(self, bincode::config::standard())
             .map_err(|e| UpgradeError::SerializationError(e.to_string()))?;
 
         let mut hasher = Sha256::new();
@@ -395,12 +395,15 @@ impl UpgradeCheckpoint {
 
     /// Compute checkpoint hash
     fn compute_hash(&self) -> Result<Vec<u8>, UpgradeError> {
-        let serialized = bincode::serialize(&(
-            self.version_before,
-            &self.state_root_before,
-            self.block_height,
-            self.epoch,
-        ))
+        let serialized = bincode::serde::encode_to_vec(
+            &(
+                self.version_before,
+                &self.state_root_before,
+                self.block_height,
+                self.epoch,
+            ),
+            bincode::config::standard(),
+        )
         .map_err(|e| UpgradeError::SerializationError(e.to_string()))?;
 
         let mut hasher = Sha256::new();

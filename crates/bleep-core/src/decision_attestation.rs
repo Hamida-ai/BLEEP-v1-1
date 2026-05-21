@@ -119,7 +119,7 @@ impl DecisionType {
     pub fn decision_id(&self) -> String {
         let mut hasher = Sha3_256::new();
         // Serialize with error handling
-        match bincode::serialize(self) {
+        match bincode::serde::encode_to_vec(self, bincode::config::standard()) {
             Ok(serialized) => hasher.update(&serialized),
             Err(_) => {
                 // Fallback to hashing the decision variant name
@@ -131,8 +131,8 @@ impl DecisionType {
     }
 
     /// Serialize for signing
-    pub fn to_bytes(&self) -> Result<Vec<u8>, bincode::Error> {
-        bincode::serialize(self)
+    pub fn to_bytes(&self) -> Result<Vec<u8>, bincode::error::EncodeError> {
+        bincode::serde::encode_to_vec(self, bincode::config::standard())
     }
 }
 

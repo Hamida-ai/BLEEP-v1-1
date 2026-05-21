@@ -78,7 +78,7 @@ impl P2PNode {
         // Handle incoming messages
         let mut buffer = Vec::new();
         if stream.read_to_end(&mut buffer).is_ok() {
-            if let Ok(message) = bincode::deserialize::<P2PMessage>(&buffer) {
+            if let Ok(message) = bincode::serde::decode_from_slice::<P2PMessage>(&buffer, bincode::config::standard()).map(|(v, _)| v) {
                 match message {
                     P2PMessage::NewBlock(block) => {
                         println!("Received new block from {}: {:?}", peer_addr, block);
@@ -95,7 +95,7 @@ impl P2PNode {
                         println!("Blockchain state requested by {}", peer_addr);
                         let blockchain = blockchain.lock().unwrap();
                         let response = P2PMessage::BlockchainResponse(blockchain.get_state());
-                        let serialized = bincode::serialize(&response).unwrap();
+                        let serialized = bincode::serde::encode_to_vec(&response, bincode::config::standard()).unwrap();
                         stream.write_all(&serialized).unwrap();
                     }
                     P2PMessage::BlockchainResponse(blocks) => {
@@ -115,7 +115,7 @@ impl P2PNode {
     /// Sends a message to a peer
     pub fn send_message(&self, peer_addr: SocketAddr, message: P2PMessage) {
         if let Ok(mut stream) = TcpStream::connect(peer_addr) {
-            let serialized = bincode::serialize(&message).expect("Failed to serialize message");
+            let serialized = bincode::serde::encode_to_vec(&message, bincode::config::standard()).expect("Failed to serialize message");
             stream.write_all(&serialized).expect("Failed to send message");
         } else {
             eprintln!("Failed to connect to peer {}", peer_addr);

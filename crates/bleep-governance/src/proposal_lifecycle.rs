@@ -208,7 +208,10 @@ impl ProposalRecord {
         proposer: &str,
         action: &GovernanceAction,
     ) -> Result<Vec<u8>, ProposalError> {
-        let serialized = bincode::serialize(&(id, proposer, action))
+        let serialized = bincode::serde::encode_to_vec(
+            &(id, proposer, action),
+            bincode::config::standard(),
+        )
             .map_err(|e| ProposalError::SerializationError(e.to_string()))?;
 
         let mut hasher = Sha256::new();
@@ -283,7 +286,10 @@ impl ProposalRecord {
         to: ProposalState,
         epoch: u64,
     ) -> Result<Vec<u8>, ProposalError> {
-        let serialized = bincode::serialize(&(from, to, epoch))
+        let serialized = bincode::serde::encode_to_vec(
+            &(from, to, epoch),
+            bincode::config::standard(),
+        )
             .map_err(|e| ProposalError::SerializationError(e.to_string()))?;
 
         let mut hasher = Sha256::new();
@@ -413,7 +419,7 @@ impl ProposalRecord {
 
     /// Get proposal as immutable archive entry
     pub fn archive_hash(&self) -> Result<Vec<u8>, ProposalError> {
-        let serialized = bincode::serialize(self)
+        let serialized = bincode::serde::encode_to_vec(self, bincode::config::standard())
             .map_err(|e| ProposalError::SerializationError(e.to_string()))?;
 
         let mut hasher = Sha256::new();

@@ -431,7 +431,7 @@ impl BleepConnectOrchestrator {
             return Ok(RoutingResult::NotCrossChain);
         }
 
-        let intent: InstantIntent = bincode::deserialize(tx_bytes)
+        let intent: InstantIntent = bincode::serde::decode_from_slice::<InstantIntent, _>(tx_bytes, bincode::config::standard()).map(|(v, _)| v)
             .map_err(|e| BleepConnectError::SerializationError(e.to_string()))?;
 
         let id = self.submit_intent(intent).await?;

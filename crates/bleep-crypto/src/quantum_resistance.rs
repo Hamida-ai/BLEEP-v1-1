@@ -166,7 +166,7 @@ impl Block {
         hasher.update(previous_hash.as_bytes());
         hasher.update(&timestamp.to_be_bytes());
         for tx in transactions {
-            hasher.update(&bincode::serialize(tx).unwrap());
+            hasher.update(&bincode::serde::encode_to_vec(tx, bincode::config::standard()).unwrap());
         }
         hex::encode(hasher.finalize())
     }
