@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use log::info;
     use std::collections::HashMap;
+    use crate::ai_adaptive_logic::{AIAdaptiveConsensus, Validator};
+    use crate::ConsensusMode;
 
     /// **Helper function: Create mock validators**
     fn mock_validators() -> HashMap<String, Validator> {

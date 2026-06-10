@@ -40,6 +40,7 @@ bleep-state    = { path = "../bleep-state" }
 
 # Randomness
 rand = "0.8.5"
+blst = "0.3"
 
 # Error Handling
 thiserror = "1.0.39"

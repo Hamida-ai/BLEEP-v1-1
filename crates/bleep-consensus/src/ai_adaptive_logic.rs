@@ -16,12 +16,17 @@ pub struct Validator {
 /// the most suitable consensus mode. All calculations are deterministic
 /// and reproducible across nodes.
 pub struct AIAdaptiveConsensus {
-    consensus_mode: ConsensusMode,
-    validators: HashMap<String, Validator>,
-    metrics_history: Vec<(u64, u64, f64)>, // (load, latency, reliability)
+    pub consensus_mode: ConsensusMode,
+    pub validators: HashMap<String, Validator>,
+    pub metrics_history: Vec<(u64, u64, f64)>, // (load, latency, reliability)
 
     /// Weighting factor for recent observations (multiplicative per epoch back)
-    recency_weight_factor: f64,
+    pub recency_weight_factor: f64,
+
+    /// Convenience vectors used by tests and telemetry
+    pub network_load: Vec<u64>,
+    pub average_latency: Vec<u64>,
+    pub reliability: Vec<f64>,
 }
 
 impl AIAdaptiveConsensus {
@@ -34,7 +39,10 @@ impl AIAdaptiveConsensus {
             consensus_mode: ConsensusMode::PoS, // Default
             validators,
             metrics_history: vec![],
-            recency_weight_factor: 0.1,
+            recency_weight_factor: 4.0,
+            network_load: vec![],
+            average_latency: vec![],
+            reliability: vec![],
         }
     }
 
@@ -47,6 +55,9 @@ impl AIAdaptiveConsensus {
     /// * `reliability` - Network health score (0.0-1.0)
     pub fn collect_metrics(&mut self, load: u64, latency: u64, reliability: f64) {
         self.metrics_history.push((load, latency, reliability));
+        self.network_load.push(load);
+        self.average_latency.push(latency);
+        self.reliability.push(reliability);
         info!(
             "Metrics Collected: Load={}%, Latency={}ms, Reliability={:.2}",
             load, latency, reliability
@@ -203,7 +214,7 @@ impl AIAdaptiveConsensus {
     }
 
     /// **Retrieve Real Blockchain Metrics**
-    fn get_real_network_metrics(&self) -> (u64, u64, f64) {
+    pub fn get_real_network_metrics(&self) -> (u64, u64, f64) {
         // **🚀 REAL-TIME NETWORK DATA FETCHING FROM BLEEP BLOCKCHAIN**
         let load = self.fetch_network_load(); // % Load
         let latency = self.fetch_average_latency(); // ms
@@ -231,19 +242,19 @@ impl AIAdaptiveConsensus {
     }
 
     /// **PoS Execution Logic**
-    fn pos_process(&self) {
+    pub fn pos_process(&self) {
         info!("Executing PoS Consensus...");
         // Real-time staking, block validation, and finality logic
     }
 
     /// **PBFT Execution Logic**
-    fn pbft_process(&self) {
+    pub fn pbft_process(&self) {
         info!("Executing PBFT Consensus...");
         // Byzantine fault-tolerant leader-based block finalization
     }
 
     /// **PoW Execution Logic**
-    fn pow_process(&self) {
+    pub fn pow_process(&self) {
         info!("Executing PoW Consensus...");
         // Adaptive PoW mining adjustments and difficulty tuning
     }

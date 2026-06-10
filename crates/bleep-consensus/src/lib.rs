@@ -11,7 +11,6 @@ pub mod pbft_engine;
 pub mod pos_engine;
 pub mod pow_engine;
 pub mod slashing_engine;
-pub mod tests;
 pub mod validator_identity;
 
 pub use blockchain_state::BlockchainState;
@@ -77,3 +76,6 @@ pub use shard_coordinator::{
 
 pub mod security_audit;
 pub use security_audit::{AuditFinding, AuditReport, AuditSummary, FindingStatus, Severity};
+
+// Place the tests module after public exports so test code can access re-exports
+pub mod tests;

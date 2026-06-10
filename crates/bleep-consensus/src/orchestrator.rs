@@ -414,6 +414,7 @@ impl ConsensusOrchestrator {
 
     /// Reset the PoW state (for testing only).
     #[cfg(test)]
+    #[allow(dead_code)]
     fn reset_pow_state(&mut self) {
         self.pow_state = EmergencyPoWState::Inactive;
     }

@@ -134,7 +134,7 @@ pub struct SlashingPenalty {
 impl Default for SlashingPenalty {
     fn default() -> Self {
         SlashingPenalty {
-            double_signing_penalty: 0.33,      // Slash 33% of stake
+            double_signing_penalty: 1.0,       // Slash 100% of stake for double-signing
             equivocation_penalty: 0.25,        // Slash 25% of stake
             downtime_penalty_per_block: 0.001, // Slash 0.1% per missed block
         }

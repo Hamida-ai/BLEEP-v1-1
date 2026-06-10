@@ -8,9 +8,89 @@
 // 4. Proofs are deterministic (same input → same proof)
 // 5. Proofs can be stored on-chain or in light client proofs
 
+use blst::{BLST_ERROR, min_sig::{PublicKey, Signature}};
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+#[cfg(test)]
+use blst::min_sig::{AggregateSignature, SecretKey};
+
+#[cfg(test)]
+use rand::rngs::OsRng;
+
+#[cfg(test)]
+use rand::RngCore;
+
+const BLS_DST: &[u8] = b"BLEEP-BLS-AGGREGATE-SIG";
+
+#[cfg(test)]
+#[allow(dead_code)]
+fn generate_bls_keypair() -> Result<(Vec<u8>, Vec<u8>), String> {
+    let mut ikm = [0u8; 32];
+    OsRng.fill_bytes(&mut ikm);
+    let sk = SecretKey::key_gen(&ikm, &[])
+        .map_err(|_| "BLS key generation failed".to_string())?;
+    let pk = sk.sk_to_pk();
+    Ok((pk.to_bytes().to_vec(), sk.to_bytes().to_vec()))
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+fn bls_sign(message: &[u8], secret_key_bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let sk = SecretKey::from_bytes(secret_key_bytes)
+        .map_err(|_| "Invalid BLS secret key".to_string())?;
+    let signature = sk.sign(message, BLS_DST, &[]);
+    Ok(signature.to_bytes().to_vec())
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+fn aggregate_bls_signatures(signatures: &[Vec<u8>]) -> Result<Vec<u8>, String> {
+    // Parse individual signatures
+    let mut sig_objs: Vec<Signature> = Vec::with_capacity(signatures.len());
+    for signature_bytes in signatures {
+        let sig = Signature::from_bytes(signature_bytes)
+            .map_err(|_| "Invalid BLS signature bytes".to_string())?;
+        sig_objs.push(sig);
+    }
+
+    // Build slice of references for aggregation API
+    let sig_refs: Vec<&Signature> = sig_objs.iter().collect();
+
+    // Aggregate signatures using the crate API
+    let agg = AggregateSignature::aggregate(&sig_refs, true)
+        .map_err(|e| format!("BLS signature aggregation failed: {:?}", e))?;
+
+    // Convert aggregated object to a single Signature and serialize
+    let signature = Signature::from_aggregate(&agg);
+    Ok(signature.to_bytes().to_vec())
+}
+
+fn verify_bls_aggregate_signature(
+    message: &[u8],
+    aggregate_signature: &[u8],
+    public_keys: &[Vec<u8>],
+) -> Result<(), String> {
+    let signature = Signature::from_bytes(aggregate_signature)
+        .map_err(|_| "Invalid aggregate BLS signature".to_string())?;
+
+    let mut pks = Vec::with_capacity(public_keys.len());
+    for pk_bytes in public_keys {
+        let pk = PublicKey::from_bytes(pk_bytes)
+            .map_err(|_| "Invalid BLS public key".to_string())?;
+        pks.push(pk);
+    }
+
+    // Build slice of references for verification API
+    let pk_refs: Vec<&PublicKey> = pks.iter().collect();
+
+    let err = signature.fast_aggregate_verify(true, message, BLS_DST, &pk_refs);
+    if err != BLST_ERROR::BLST_SUCCESS {
+        return Err(format!("BLS aggregate verification failed: {:?}", err));
+    }
+    Ok(())
+}
 
 /// A finality certificate: cryptographic proof that a block is finalized.
 ///
@@ -30,8 +110,13 @@ pub struct FinalizyCertificate {
     /// Consensus mode used to finalize this block
     pub consensus_mode: String,
 
-    /// List of validator IDs that participated in finalization
+    /// List of validator IDs that participated in finalization.
+    /// In the legacy path, each item carries a per-validator signature.
     pub validator_signatures: Vec<ValidatorSignature>,
+
+    /// Signer metadata for an aggregated finality proof.
+    /// When `aggregate_signature` is used, this holds validator IDs, voting power and BLS public keys.
+    pub aggregate_signers: Vec<AggregateSigner>,
 
     /// Aggregated signature from participating validators (optional BLS aggregation)
     pub aggregate_signature: Vec<u8>,
@@ -70,6 +155,7 @@ impl FinalizyCertificate {
             finalized_epoch,
             consensus_mode,
             validator_signatures: Vec::new(),
+            aggregate_signers: Vec::new(),
             aggregate_signature: Vec::new(),
             merkle_root,
             finalized_timestamp,
@@ -86,6 +172,13 @@ impl FinalizyCertificate {
         signature: Vec<u8>,
         voting_power: u128,
     ) -> Result<(), String> {
+        if !self.aggregate_signature.is_empty() {
+            return Err(
+                "Cannot add individual validator signatures when an aggregate signature is set"
+                    .to_string(),
+            );
+        }
+
         // Check for duplicates
         if self
             .validator_signatures
@@ -107,8 +200,36 @@ impl FinalizyCertificate {
         Ok(())
     }
 
+    /// Set an aggregated finality proof using BLS aggregation.
+    pub fn set_aggregate_signature(
+        &mut self,
+        aggregate_signers: Vec<AggregateSigner>,
+        aggregate_signature: Vec<u8>,
+    ) -> Result<(), String> {
+        if !self.validator_signatures.is_empty() {
+            return Err(
+                "Cannot set aggregate signature when individual signatures are present"
+                    .to_string(),
+            );
+        }
+        if !self.aggregate_signature.is_empty() {
+            return Err("Aggregate signature already set".to_string());
+        }
+        if aggregate_signers.is_empty() {
+            return Err("Aggregate signers cannot be empty".to_string());
+        }
+
+        self.aggregate_signers = aggregate_signers;
+        self.aggregate_signature = aggregate_signature;
+        Ok(())
+    }
+
     /// Get the total voting power of all signers.
     pub fn total_voting_power(&self) -> u128 {
+        if !self.aggregate_signature.is_empty() {
+            return self.aggregate_signers.iter().map(|s| s.voting_power).sum();
+        }
+
         self.validator_signatures
             .iter()
             .map(|s| s.voting_power)
@@ -117,6 +238,9 @@ impl FinalizyCertificate {
 
     /// Get the count of validators that signed.
     pub fn signer_count(&self) -> usize {
+        if !self.aggregate_signature.is_empty() {
+            return self.aggregate_signers.len();
+        }
         self.validator_signatures.len()
     }
 
@@ -126,6 +250,34 @@ impl FinalizyCertificate {
     pub fn meets_quorum(&self, total_stake: u128) -> bool {
         let threshold = (total_stake * 2) / 3;
         self.total_voting_power() > threshold
+    }
+
+    /// Whether this certificate uses a BLS aggregated signature.
+    pub fn is_aggregate(&self) -> bool {
+        !self.aggregate_signature.is_empty()
+    }
+
+    /// Verify the aggregate BLS signature, if present.
+    pub fn verify_aggregate_signature(&self) -> Result<(), String> {
+        if self.aggregate_signature.is_empty() {
+            return Err("No aggregate signature present".to_string());
+        }
+        if self.aggregate_signers.is_empty() {
+            return Err("No aggregate signer metadata present".to_string());
+        }
+
+        let signers: Vec<Vec<u8>> = self
+            .aggregate_signers
+            .iter()
+            .map(|s| s.public_key.clone())
+            .collect();
+
+        verify_bls_aggregate_signature(self.block_hash.as_bytes(), &self.aggregate_signature, &signers)
+    }
+
+    /// Get the block hash bytes used for signing.
+    pub fn signature_message(&self) -> Vec<u8> {
+        self.block_hash.as_bytes().to_vec()
     }
 
     /// Verify that the block hash hasn't been tampered with.
@@ -164,6 +316,19 @@ pub struct ValidatorSignature {
     pub signature: Vec<u8>,
 
     /// Voting power of this validator at time of signing
+    pub voting_power: u128,
+}
+
+/// Metadata for a signer in an aggregated finality proof.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AggregateSigner {
+    /// Validator ID that participated in the aggregate proof.
+    pub validator_id: String,
+
+    /// BLS public key corresponding to the signer.
+    pub public_key: Vec<u8>,
+
+    /// Voting power of this validator at time of signing.
     pub voting_power: u128,
 }
 
@@ -220,7 +385,9 @@ impl FinalityProof {
             ));
         }
 
-        if self.certificate.signer_count() == 0 {
+        if self.certificate.is_aggregate() {
+            self.certificate.verify_aggregate_signature()?;
+        } else if self.certificate.signer_count() == 0 {
             return Err("Certificate has no signers".to_string());
         }
 
@@ -422,6 +589,46 @@ mod tests {
         cert.add_validator_signature("v2".to_string(), vec![4, 5, 6], 100)
             .unwrap();
         assert!(cert.meets_quorum(total_stake));
+    }
+
+    #[test]
+    fn test_finality_certificate_aggregate_signature() {
+        let mut cert = FinalizyCertificate::new(
+            100,
+            "hash100".to_string(),
+            1,
+            "PoS".to_string(),
+            "merkle_root".to_string(),
+            1000,
+            1,
+        )
+        .unwrap();
+
+        let message = cert.signature_message();
+        let mut aggregate_signers = Vec::new();
+        let mut signatures = Vec::new();
+
+        for validator_id in ["v1", "v2"] {
+            let (public_key, secret_key) = generate_bls_keypair().expect("BLS keygen failed");
+            let signature = bls_sign(&message, &secret_key).expect("BLS sign failed");
+            aggregate_signers.push(AggregateSigner {
+                validator_id: validator_id.to_string(),
+                public_key,
+                voting_power: 700,
+            });
+            signatures.push(signature);
+        }
+
+        let aggregate_signature = aggregate_bls_signatures(&signatures)
+            .expect("BLS aggregate signing failed");
+        cert.set_aggregate_signature(aggregate_signers, aggregate_signature)
+            .expect("set aggregate signature failed");
+
+        assert!(cert.verify_aggregate_signature().is_ok());
+        assert!(cert.meets_quorum(1000));
+
+        let proof = FinalityProof::new(cert);
+        assert!(proof.verify(1000).is_ok());
     }
 
     #[test]

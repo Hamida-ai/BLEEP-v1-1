@@ -566,7 +566,7 @@ mod tests {
             pubkeys,
             key,
             Arc::new(NetworkingModule::new()),
-            Arc::new(AIAdaptiveConsensus::new()),
+            Arc::new(AIAdaptiveConsensus::new(HashMap::new())),
         )
     }
 
@@ -719,7 +719,7 @@ mod tests {
             HashMap::new(),
             ValidatorSigningKey::generate(),
             Arc::new(NetworkingModule::new()),
-            Arc::new(AIAdaptiveConsensus::new()),
+            Arc::new(AIAdaptiveConsensus::new(HashMap::new())),
         );
 
         c.monitor_validators();
