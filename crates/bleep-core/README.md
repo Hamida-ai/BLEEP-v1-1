@@ -1,15 +1,15 @@
 # bleep-core
 
-**Core Blockchain Logic, Transactions & Protocol Enforcement**
+**Core Protocol Types, Transactions & Invariant Enforcement â€” BLEEP Quantum Trust Network**
 
-`bleep-core` is the foundational crate of the BLEEP blockchain. It owns block and transaction structures, the mempool, protocol invariant enforcement, anti-asset-loss recovery logic, and proof-of-identity primitives.
+`bleep-core` is the foundational crate of the BLEEP blockchain. It defines block and transaction structures, the mempool, protocol invariant enforcement, and the async bridge that connects the mempool to the consensus block producer. All other crates depend on `bleep-core`; `bleep-core` depends on nothing else in the workspace.
 
 ---
 
 ## License
 
-Licensed under **MIT**.
-Copyright © 2025 Muhammad Attahir.
+Licensed under **Apache 2.0**.
+Copyright Â© 2026 Muhammad Attahir.
 
 ---
 
@@ -17,23 +17,23 @@ Copyright © 2025 Muhammad Attahir.
 
 ```
 bleep-core
-├── block                  — Block struct, derive_block_keypair, hash computation
-├── block_validation       — Structural and cryptographic block validation rules
-├── blockchain             — In-memory chain ledger
-├── transaction            — ZKTransaction: quantum-signed transaction type
-├── transaction_manager    — Lifecycle management: creation → validation → broadcast
-├── transaction_pool       — Priority-ordered mempool pool
-├── mempool                — DashMap-backed in-memory mempool
-├── mempool_bridge         — Async bridge from mempool to consensus (run_mempool_bridge)
-├── state                  — Lightweight state mirror (account balances/nonces)
-├── networking             — Core P2P message dispatch
-├── proof_of_identity      — ZKP-based identity proof primitives
-├── anti_asset_loss        — Asset recovery request lifecycle
-├── protocol_invariants    — Declarative invariant definitions
-├── invariant_enforcement  — Runtime invariant assertion engine
-├── decision_attestation   — Attested on-chain decisions (signed outcomes)
-├── decision_verification  — Verification of attested decisions
-└── tests                  — Unit test suite
+â”œâ”€â”€ block                  â€” Block struct, hash computation, genesis configuration
+â”œâ”€â”€ block_validation       â€” Structural and cryptographic block validation rules
+â”œâ”€â”€ blockchain             â€” In-memory chain ledger
+â”œâ”€â”€ transaction            â€” ZKTransaction: SPHINCS+-signed transaction type
+â”œâ”€â”€ transaction_manager    â€” Lifecycle: creation â†’ validation â†’ broadcast
+â”œâ”€â”€ transaction_pool       â€” Fee-priority mempool pool
+â”œâ”€â”€ mempool                â€” DashMap-backed in-memory mempool
+â”œâ”€â”€ mempool_bridge         â€” Async bridge: mempool â†’ consensus block producer
+â”œâ”€â”€ state                  â€” Lightweight account state mirror (balances, nonces)
+â”œâ”€â”€ networking             â€” Core P2P message dispatch
+â”œâ”€â”€ proof_of_identity      â€” ZKP-based identity proof primitives
+â”œâ”€â”€ anti_asset_loss        â€” Asset recovery request lifecycle
+â”œâ”€â”€ protocol_invariants    â€” Declarative invariant definitions
+â”œâ”€â”€ invariant_enforcement  â€” Runtime invariant assertion engine
+â”œâ”€â”€ decision_attestation   â€” Attested on-chain decisions (signed outcomes)
+â”œâ”€â”€ decision_verification  â€” Verification of attested decisions
+â””â”€â”€ tests                  â€” Unit test suite
 ```
 
 ---
@@ -42,56 +42,79 @@ bleep-core
 
 ### `ZKTransaction`
 
-All transactions on BLEEP are `ZKTransaction` — quantum-signed payloads carrying:
+All BLEEP transactions are `ZKTransaction` â€” SPHINCS+-signed payloads carrying:
 
-- `from` / `to` addresses
-- `amount` (microBLEEP)
-- `nonce` (anti-replay)
-- `gas_limit`
-- Falcon or Ed25519 signature
-- Optional ZK auxiliary data
+```rust
+struct ZKTransaction {
+    from:        [u8; 32],      // sender address (SHA3-256 of SPHINCS+ public key)
+    to:          [u8; 32],      // recipient address
+    amount:      u128,          // microBLEEP
+    nonce:       u64,           // anti-replay counter
+    gas_limit:   u64,
+    signature:   Vec<u8>,       // SPHINCS+-SHAKE-256f-simple â€” 7,856 bytes
+    zk_aux:      Option<Vec<u8>>, // optional ZK auxiliary data (recovery, privacy)
+}
+```
+
+The name `ZKTransaction` reflects BLEEP's broader ZK capabilities; all transactions carry SPHINCS+ signatures. ZK auxiliary data is used for specific operations such as asset recovery proofs and private governance votes.
 
 ### `Block`
 
-A block contains an ordered list of `ZKTransaction`s, links to the previous block hash, a SPHINCS+-signed state root, and a timestamp.
+```rust
+struct Block {
+    index:        u64,
+    prev_hash:    [u8; 32],       // SHA3-256 of previous block
+    transactions: Vec<ZKTransaction>,
+    state_root:   [u8; 32],       // Sparse Merkle Trie root (SPHINCS+-signed by proposer)
+    stark_proof:  Vec<u8>,        // Winterfell STARK BlockValidityProof
+    timestamp:    u64,
+    proposer_pk:  Vec<u8>,        // SPHINCS+ public key of block proposer
+    signature:    Vec<u8>,        // SPHINCS+ block signature
+}
+```
 
-### `AntiAssetLoss`
-
-Allows token holders to submit a ZKP-backed ownership proof when keys are lost. The request enters a governance queue for quorum approval.
+Both `stark_proof` and `signature` are required for a block to be accepted by any validator.
 
 ---
 
 ## Protocol Invariants
 
-`bleep-core` defines the canonical set of protocol invariants checked by `InvariantEnforcement` at runtime:
+`bleep-core` defines and enforces the canonical set of runtime protocol invariants via `InvariantEnforcement`:
 
-- Total supply conservation (minted − burned = circulating)
-- Nonce monotonicity per account
-- No negative balances
-- Block hash chain continuity
-- ZK proof inclusion in recovery requests
+| Invariant | Check |
+|---|---|
+| Supply conservation | `total_minted - total_burned == circulating + locked` |
+| Nonce monotonicity | Account nonce increases by exactly 1 per transaction |
+| No negative balances | All balance deltas must leave balances â‰¥ 0 |
+| Block hash continuity | `block.prev_hash == hash(previous_block)` |
+| ZK proof inclusion | Asset recovery requests must include a valid ZKP |
 
 ---
 
 ## Mempool Bridge
 
-`run_mempool_bridge()` is an async task that monitors the mempool and forwards transactions to the `bleep-consensus` block producer over a Tokio channel. It applies:
+`run_mempool_bridge()` is an async Tokio task connecting the mempool to `bleep-consensus`'s block producer:
 
-- Fee-based prioritisation
-- Max mempool size enforcement (oldest low-fee txs are evicted)
+```rust
+use bleep_core::run_mempool_bridge;
+
+tokio::spawn(run_mempool_bridge(mempool.clone(), block_producer_tx));
+```
+
+The bridge applies:
+- Fee-based priority ordering (highest fee first)
+- Maximum mempool size enforcement (oldest low-fee transactions evicted)
 - Duplicate detection by transaction hash
+- 500ms drain cycle
 
 ---
 
-## Quick Start
+## Anti-Asset-Loss Recovery
 
-```rust
-use bleep_core::{Block, ZKTransaction, run_mempool_bridge};
-
-// Transactions are created via the wallet and submitted to the mempool.
-// The mempool bridge forwards them to consensus automatically.
-tokio::spawn(run_mempool_bridge(mempool.clone(), tx_channel));
-```
+`anti_asset_loss.rs` enables token holders to submit ZKP-backed ownership proofs when private keys are lost. The request:
+1. Proves ownership of the affected account without revealing the private key
+2. Enters the governance queue as an `AssetRecovery` proposal
+3. Requires quorum approval before recovery is executed
 
 ---
 
@@ -103,4 +126,5 @@ cargo test -p bleep-core
 
 ---
 
-*Part of the [BLEEP Ecosystem](https://github.com/BleepEcosystem/BLEEP-V1)*
+*Part of the [BLEEP Quantum Trust Network](https://github.com/BleepEcosystem/BLEEP-v1) Â· Protocol Version 5*
+*Â© 2026 Muhammad Attahir â€” Apache 2.0 Licence*
