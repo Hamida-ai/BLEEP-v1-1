@@ -1,15 +1,15 @@
 # bleep-economics
 
-**Economic Nervous System for BLEEP**
+**Economic Nervous System — BLEEP Quantum Trust Network**
 
-`bleep-economics` implements the complete tokenomics layer of BLEEP: emission schedules, fee markets, validator incentives, burn mechanics, supply tracking, oracle integration, and game-theoretic safety guarantees. After this layer, BLEEP survives not just bugs — but rational adversaries.
+`bleep-economics` implements the complete tokenomics layer of BLEEP: constitutional supply enforcement, emission schedules, EIP-1559-style fee market, validator incentives, burn mechanics, supply tracking, oracle price aggregation, and game-theoretic safety proofs. Four parameters are constitutionally immutable and enforced by Rust `const_assert!`.
 
 ---
 
 ## License
 
-Licensed under **MIT**.
-Copyright © 2025 Muhammad Attahir.
+Licensed under **Apache 2.0**.
+Copyright © 2026 Muhammad Attahir.
 
 ---
 
@@ -17,37 +17,58 @@ Copyright © 2025 Muhammad Attahir.
 
 ```
 bleep-economics
-├── tokenomics          — CanonicalTokenomicsEngine, EmissionSchedule, BurnConfig, SupplyState
-├── distribution        — GenesisAllocation, VestingPolicy, FeeDistribution, BucketSnapshot
-├── fee_market          — EIP-1559-style adaptive base fee with BLEEP-specific tuning
+├── tokenomics           — CanonicalTokenomicsEngine, EmissionSchedule, SupplyState
+├── distribution         — GenesisAllocation, VestingPolicy, FeeDistribution, BucketSnapshot
+├── fee_market           — EIP-1559-style adaptive base fee
 ├── validator_incentives — Per-epoch reward calculation, commission splits
-├── oracle_bridge       — Trust-minimised price feed aggregation
-├── game_theory         — Mechanism design safety proofs & adversarial modelling
-└── runtime             — Runtime hooks called by bleep-scheduler each epoch
+├── oracle_bridge        — Trust-minimised price feed aggregation
+├── game_theory          — SafetyVerifier: mechanism design proofs and adversarial modelling
+└── runtime              — Scheduler hooks called by bleep-scheduler each epoch
 ```
 
 ---
 
-## Token Allocation
+## Constitutional Token Parameters
 
-The genesis supply is fixed at **1,000,000,000 BLP** (1 billion), allocated as follows:
+These four values are enforced by Rust `const_assert!`. A code change that violates them does not compile. They cannot be changed by governance vote, software upgrade, or validator supermajority.
 
-| Bucket | Allocation | Vesting |
-|--------|-----------|---------|
-| Validator Rewards | `ALLOC_VALIDATOR_REWARDS` | Per-epoch emission |
-| Ecosystem Fund | `ALLOC_ECOSYSTEM_FUND` | 4-year linear |
-| Community Incentives | `ALLOC_COMMUNITY_INCENTIVES` | 2-year linear |
-| Foundation Treasury | `ALLOC_FOUNDATION_TREASURY` | 3-year linear with 6-month cliff |
-| Core Contributors | `ALLOC_CORE_CONTRIBUTORS` | 4-year linear with 1-year cliff |
-| Strategic Reserve | `ALLOC_STRATEGIC_RESERVE` | Governance-locked |
+| Parameter | Value | Source |
+|---|---|---|
+| Maximum supply | **200,000,000 BLEEP** | `MAX_SUPPLY` in `tokenomics.rs` |
+| Maximum per-epoch inflation | **500 bps (5%)** | `MAX_INFLATION_RATE_BPS` |
+| Fee burn floor | **2,500 bps (25%)** | `FEE_BURN_BPS` in `distribution.rs` |
+| Validator fee share | **5,000 bps (50%)** | `FEE_VALIDATOR_REWARD_BPS` |
+| Treasury fee share | **2,500 bps (25%)** | `FEE_TREASURY_BPS` |
 
-Initial circulating supply: `INITIAL_CIRCULATING_SUPPLY` microBLEEP.
+The fee splits sum to exactly 10,000 bps — enforced by a separate compile-time assertion in `distribution.rs`.
 
 ---
 
-## Emission Schedule
+## Token Distribution
 
-Validator emissions decrease over time following a configurable `EmissionSchedule`. The first year emits `VALIDATOR_EMISSION_YEAR` microBLEEP, halving or decaying on a per-governance-decision basis.
+| Allocation | Tokens | % | Launch Unlock | Vesting |
+|---|---|---|---|---|
+| Validator Rewards | 60,000,000 | 30% | 10,000,000 | Emission decay schedule |
+| Ecosystem Fund | 50,000,000 | 25% | 5,000,000 | 10-year linear; governance disbursement |
+| Community Incentives | 30,000,000 | 15% | 5,000,000 | Governance-triggered release |
+| Foundation Treasury | 30,000,000 | 15% | 5,000,000 | 6-year linear; governance spending |
+| Core Contributors | 20,000,000 | 10% | 0 | 1-year cliff + 4-year linear; immutable on-chain |
+| Strategic Reserve | 10,000,000 | 5% | 0 | Governance-controlled unlock |
+| **Total** | **200,000,000** | **100%** | **25,000,000** (12.5%) | |
+
+---
+
+## Validator Emission Schedule
+
+Emissions decrease year-over-year from the 60,000,000 BLEEP validator rewards allocation:
+
+| Year | Rate | Annual Emission |
+|---|---|---|
+| 1 | 12% | 7,200,000 BLEEP |
+| 2 | 10% | 6,000,000 BLEEP |
+| 3 | 8% | 4,800,000 BLEEP |
+| 4 | 6% | 3,600,000 BLEEP |
+| 5+ | 4% | ~2,400,000 BLEEP/yr |
 
 Emission types: `Block`, `Epoch`, `Governance`, `Bootstrap`.
 
@@ -55,17 +76,22 @@ Emission types: `Block`, `Epoch`, `Governance`, `Bootstrap`.
 
 ## Fee Market
 
-BLEEP uses an EIP-1559-style adaptive base fee:
-
-- Base fee adjusts per block based on block fullness relative to the target.
-- **`FEE_BURN_BPS`** of the base fee is burned, reducing supply.
-- **`FEE_VALIDATOR_REWARD_BPS`** goes to the block producer.
-- **`FEE_TREASURY_BPS`** flows to the Foundation Treasury bucket.
+EIP-1559-style adaptive base fee adjusting per block against a 50% capacity target:
 
 ```rust
 use bleep_economics::fee_market::FeeMarket;
+
 let base_fee = FeeMarket::current_base_fee(&supply_state);
 ```
+
+| Parameter | Value |
+|---|---|
+| Minimum base fee | 1,000 microBLEEP |
+| Maximum base fee | 10,000,000,000 microBLEEP |
+| Max base fee change per block | 1,250 bps (12.5%) |
+| Capacity target | 50% of MAX_TXS_PER_BLOCK |
+
+Each collected fee is split: **25% burned** / **50% validator rewards** / **25% treasury** — sums enforced at compile time.
 
 ---
 
@@ -73,29 +99,45 @@ let base_fee = FeeMarket::current_base_fee(&supply_state);
 
 Each epoch, `ValidatorEmissionSchedule` distributes rewards proportional to:
 - Stake weight
-- Uptime
-- Reputation score (from `bleep-consensus`)
-- Commission rate
+- Uptime (missed blocks reduce reward proportionally)
+- Reputation score from `bleep-consensus`
+- Commission rate (validator-configurable)
 
-Slashing deductions applied by `bleep-consensus` are reflected in the `SupplyState` burn counter.
+Slashing deductions from `bleep-consensus` are reflected in the `SupplyState` burn counter and reconciled against the supply invariant.
 
 ---
 
 ## Oracle Bridge
 
-The oracle bridge aggregates price feeds from multiple authorised providers, applies a median filter, and stores the result for use in fee denominations and governance quorum calculations. Malicious providers are flagged and weight-penalised.
+`oracle_bridge.rs` aggregates price feeds from multiple authorised providers, applies a median filter, and stores the result on-chain for fee denomination and governance quorum calculations. Providers submitting outlier values are weight-penalised. The oracle result is queryable at `GET /rpc/oracle/price/BLEEP%2FUSD`.
+
+---
+
+## Game-Theoretic Safety — `SafetyVerifier`
+
+`game_theory.rs` implements a `SafetyVerifier` that evaluates five adversarial attack models against current protocol parameters:
+
+| Attack Model | Check |
+|---|---|
+| Equivocation | Is double-signing profitable after slashing? |
+| Censorship | Can a validator cartel profitably censor transactions? |
+| NonParticipation | Is withholding votes economically rational? |
+| Griefing | Can an attacker reduce others' rewards at net profit? |
+| Cartel formation | Is forming a >33% stake coalition stable? |
+
+**A build fails if any model returns `is_profitable = true` at current parameters.** This is a CI gate, not a runtime check.
 
 ---
 
 ## Supply Invariant
 
-At all times:
+At all times, the following invariant must hold:
 
 ```
 total_minted - total_burned = circulating_supply + locked_supply
 ```
 
-This invariant is verified by `bleep-core`'s `InvariantEnforcement` on every block.
+Verified by `bleep-core`'s `InvariantEnforcement` on every block. The `supply_state_verify` scheduler task checks this invariant on a timed interval and halts the node if violated — this task is marked **SAFETY CRITICAL** in the scheduler registry.
 
 ---
 
@@ -107,4 +149,5 @@ cargo test -p bleep-economics
 
 ---
 
-*Part of the [BLEEP Ecosystem](https://github.com/BleepEcosystem/BLEEP-V1)*
+*Part of the [BLEEP Quantum Trust Network](https://github.com/BleepEcosystem/BLEEP-v1) · Protocol Version 5*
+*© 2026 Muhammad Attahir — Apache 2.0 Licence*
