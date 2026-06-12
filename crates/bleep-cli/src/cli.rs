@@ -1229,7 +1229,15 @@ async fn post_stake_tx(rpc: &str, amount: u64, label: &str) -> Result<String> {
             .unwrap_or_default()
             .as_secs(),
     };
-    let resp = client.post(&url).json(&body).send().await?.text().await?;
+    let jwt_token = get_jwt_token().await?;
+    let resp = client
+        .post(&url)
+        .header("authorization", format!("Bearer {}", jwt_token))
+        .json(&body)
+        .send()
+        .await?
+        .text()
+        .await?;
     Ok(resp)
 }
 
@@ -1249,7 +1257,15 @@ async fn post_unstake_tx(rpc: &str, validator_id: &str) -> Result<String> {
             .unwrap_or_default()
             .as_secs(),
     };
-    let resp = client.post(&url).json(&body).send().await?.text().await?;
+    let jwt_token = get_jwt_token().await?;
+    let resp = client
+        .post(&url)
+        .header("authorization", format!("Bearer {}", jwt_token))
+        .json(&body)
+        .send()
+        .await?
+        .text()
+        .await?;
     Ok(resp)
 }
 
