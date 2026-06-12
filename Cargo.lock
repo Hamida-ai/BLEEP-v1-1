@@ -726,6 +726,15 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "bincode"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "bincode"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "36eaf5d7b090263e8150820482d5d93cd964a81e4019913c972f4edcc6edb740"
@@ -924,7 +933,7 @@ version = "0.1.0"
 dependencies = [
  "actix-rt",
  "actix-web",
- "bincode",
+ "bincode 2.0.1",
  "blake3",
  "bleep-consensus",
  "bleep-core",
@@ -960,7 +969,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.21.7",
- "bincode",
+ "bincode 2.0.1",
  "bleep-crypto",
  "chrono",
  "constant_time_eq 0.3.1",
@@ -1035,7 +1044,7 @@ dependencies = [
 name = "bleep-connect-commitment-chain"
 version = "0.1.0"
 dependencies = [
- "bincode",
+ "bincode 2.0.1",
  "bleep-connect-crypto",
  "bleep-connect-types",
  "dashmap 5.5.3",
@@ -1053,7 +1062,7 @@ dependencies = [
 name = "bleep-connect-core"
 version = "0.1.0"
 dependencies = [
- "bincode",
+ "bincode 2.0.1",
  "bleep-connect-adapters",
  "bleep-connect-commitment-chain",
  "bleep-connect-crypto",
@@ -1191,7 +1200,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "bincode",
+ "bincode 2.0.1",
  "bleep-core",
  "bleep-crypto",
  "bleep-p2p",
@@ -1227,7 +1236,7 @@ version = "0.1.0"
 dependencies = [
  "ark-std 0.4.0",
  "async-trait",
- "bincode",
+ "bincode 2.0.1",
  "blake2",
  "bleep-crypto",
  "bleep-p2p",
@@ -1266,7 +1275,7 @@ version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
- "bincode",
+ "bincode 2.0.1",
  "blake2",
  "blake3",
  "env_logger",
@@ -1305,7 +1314,7 @@ dependencies = [
  "aes-gcm",
  "anyhow",
  "approx 0.5.1",
- "bincode",
+ "bincode 2.0.1",
  "dashmap 5.5.3",
  "env_logger",
  "hex",
@@ -1328,7 +1337,7 @@ version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
- "bincode",
+ "bincode 2.0.1",
  "bleep-ai",
  "bleep-core",
  "bleep-crypto",
@@ -1355,7 +1364,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "bincode",
+ "bincode 2.0.1",
  "chrono",
  "dashmap 5.5.3",
  "futures",
@@ -1408,7 +1417,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.22.1",
- "bincode",
+ "bincode 2.0.1",
  "blake2",
  "bytes",
  "chrono",
@@ -1446,7 +1455,7 @@ version = "2.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "bincode",
+ "bincode 2.0.1",
  "bleep-crypto",
  "dashmap 5.5.3",
  "hex",
@@ -1471,7 +1480,7 @@ dependencies = [
  "ark-r1cs-std",
  "async-trait",
  "base64 0.21.7",
- "bincode",
+ "bincode 2.0.1",
  "blake2",
  "bleep-ai",
  "bleep-auth",
@@ -1584,10 +1593,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "bleep-sig-availability"
+version = "0.1.0"
+dependencies = [
+ "bincode 1.3.3",
+ "blake3",
+ "bleep-core",
+ "bleep-crypto",
+ "crossbeam-channel",
+ "dashmap 5.5.3",
+ "parking_lot",
+ "pqcrypto-sphincsplus",
+ "pqcrypto-traits",
+ "proptest",
+ "rayon",
+ "serde",
+ "sha3",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "zeroize",
+]
+
+[[package]]
 name = "bleep-state"
 version = "1.0.0"
 dependencies = [
- "bincode",
+ "bincode 2.0.1",
  "blake3",
  "dashmap 5.5.3",
  "hex",
@@ -1627,7 +1659,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.22.1",
- "bincode",
+ "bincode 2.0.1",
  "blake2",
  "blake3",
  "bytes",
@@ -1671,7 +1703,7 @@ version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "async-trait",
- "bincode",
+ "bincode 2.0.1",
  "bip39",
  "blake2",
  "blake3",
@@ -1700,7 +1732,7 @@ version = "0.2.0"
 dependencies = [
  "ark-serialize 0.4.2",
  "ark-std 0.4.0",
- "bincode",
+ "bincode 2.0.1",
  "bleep-crypto",
  "hex",
  "rand 0.8.6",
@@ -2353,6 +2385,15 @@ checksum = "6b50826342786a51a89e2da3a28f1c32b06e387201bc2d19791f622c673706b1"
 dependencies = [
  "cast",
  "itertools 0.10.5",
+]
+
+[[package]]
+name = "crossbeam-channel"
+version = "0.5.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82b8f8f868b36967f9606790d1903570de9ceaf870a7bf9fbbd3016d636a2cb2"
+dependencies = [
+ "crossbeam-utils",
 ]
 
 [[package]]
