@@ -1,1 +1,50 @@
+[package]
+name        = "bleep-sig-availability"
+version     = "0.1.0"
+edition     = "2021"
+description = "Signature Availability Layer — gossip-based SPHINCS+ commitment distribution for BLEEP"
+license     = "Apache-2.0"
+authors     = ["Muhammad Attahir"]
+
+[dependencies]
+bleep-core   = { path = "../bleep-core"   }
+bleep-crypto = { path = "../bleep-crypto" }
+
+# Cryptographic hashing
+sha3    = "0.10"
+blake3  = "1"
+
+# Parallelism
+rayon = "1"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Concurrent data structures
+dashmap = "5"
+
+# Serialisation
+serde        = { version = "1", features = ["derive"] }
+bincode      = "1"
+
+# Synchronisation primitives
+parking_lot = "0.12"
+crossbeam-channel = "0.5"
+
+# Observability
+tracing = "0.1"
+
+# Error handling
+thiserror = "1"
+
+# Key material zeroisation
+zeroize = { version = "1", features = ["derive"] }
+
+# Post-quantum primitives (direct — matches BLEEP crate)
+pqcrypto-sphincsplus = "0.7"
+pqcrypto-traits      = "0.3"
+
+[dev-dependencies]
+tokio    = { version = "1", features = ["full", "test-util"] }
+proptest = "1"
 
