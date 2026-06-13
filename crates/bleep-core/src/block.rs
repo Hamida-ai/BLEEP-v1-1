@@ -30,6 +30,8 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 
+use bleep_zkp::{BlockValidityVerifier, StarkProof};
+
 // Transaction signature helpers used by block compaction and validation.
 use bleep_crypto::pq_crypto::SignatureScheme;
 use bleep_crypto::tx_signer::{tx_payload, verify_tx_signature};
@@ -454,15 +456,39 @@ impl Block {
         self.zk_proof = proof;
     }
 
-    /// Verify the 64-byte Fiat-Shamir ZK commitment.
+    /// Verify the ZK commitment.
     ///
-    /// Returns `true` for empty proofs (genesis exemption) and valid 64-byte proofs.
+    /// Returns `true` for empty proofs (genesis exemption), valid 64-byte
+    /// Fiat-Shamir commitments, or valid Winterfell STARK proof envelopes.
     pub fn verify_zkp(&self) -> bool {
         if self.zk_proof.is_empty() {
             return true;
         }
         if self.zk_proof.len() != 64 {
-            return false;
+            return StarkProof::from_bytes(&self.zk_proof)
+                .ok()
+                .and_then(|proof| {
+                    if proof.proof_bytes.len() < 8 || &proof.proof_bytes[..8] != b"STARK_V1" {
+                        return None;
+                    }
+
+                    let validator_pk_bytes = if self.validator_signature.len() >= 64 {
+                        &self.validator_signature[..64]
+                    } else {
+                        return Some(false);
+                    };
+
+                    BlockValidityVerifier::verify(
+                        &proof,
+                        self.index,
+                        self.epoch_id,
+                        self.transactions.len() as u64,
+                        self.merkle_root.as_bytes(),
+                        validator_pk_bytes,
+                    )
+                    .ok()
+                })
+                .unwrap_or(false);
         }
         if self.validator_signature.len() < 32 {
             return false;

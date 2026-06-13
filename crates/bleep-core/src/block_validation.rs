@@ -9,11 +9,12 @@ impl BlockValidator {
     /// SAFETY: Rejects blocks with invalid signatures or ZK proofs.
     /// This is a mandatory check before adding a block to the chain.
     ///
-    /// ## ZKP check (Sprint 5)
-    /// `verify_zkp()` validates the 64-byte Fiat-Shamir commitment produced by
-    /// `generate_zkp()`.  The commitment binds: block hash, validator public key,
-    /// epoch, protocol version, consensus mode, merkle root, shard fields, and
-    /// tx count.  An empty proof is allowed only for unsigned genesis blocks.
+    /// ## ZKP check
+    /// `verify_zkp()` validates either the legacy 64-byte Fiat-Shamir
+    /// commitment from `generate_zkp()` or the Winterfell STARK envelope
+    /// emitted by `BlockProducer`. The proof binds block fields, validator
+    /// identity, and tx count. An empty proof is allowed only for unsigned
+    /// genesis blocks.
     pub fn validate_block(block: &Block, public_key: &[u8]) -> bool {
         // Verify validator signature (quantum-secure)
         match block.verify_signature(public_key) {

@@ -26,6 +26,7 @@ zeroize = { version = "1.7.0", features = ["zeroize_derive"] }
 # Zero-Knowledge Proofs
 # STARK-based proofs using winterfell (no trusted setup)
 winterfell = "0.13.1"
+bleep-zkp = { path = "../bleep-zkp" }
 
 # State management (for hash-based Merkle trees)
 bleep-state = { path = "../bleep-state" }

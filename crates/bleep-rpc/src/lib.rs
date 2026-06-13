@@ -720,10 +720,10 @@ pub fn rpc_routes_with_state(
                                         );
                                         return Ok::<_, warp::Rejection>(resp);
                                     }
-                                    Ok(mut ident) => {
-                                        let _ = ident.activate();
+                                    Ok(ident) => {
                                         let current_stake = ident.stake;
                                         let _ = reg.register_validator(ident);
+                                        let _ = reg.activate_validator(&validator_id);
                                         let resp = StakeResp {
                                             validator_id,
                                             status: "registered".into(),

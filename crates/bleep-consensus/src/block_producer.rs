@@ -34,8 +34,10 @@ use bleep_core::block::{Block, ConsensusMode, Transaction};
 use bleep_core::blockchain::Blockchain;
 use bleep_core::transaction_pool::TransactionPool;
 use bleep_core::ZKTransaction;
+use bleep_zkp::{BlockProver, BlockValidityCircuit};
 use bleep_state::state_manager::StateManager;
 use parking_lot::Mutex as PLMutex;
+use sha3::{Digest, Sha3_256};
 
 // P2P node for in-producer gossip broadcast
 use bleep_p2p::p2p_node::P2PNode;
@@ -414,7 +416,22 @@ impl BlockProducer {
             block.validator_signature = self.config.validator_id.as_bytes().to_vec();
         }
 
-        // ── 8: Commit to chain ────────────────────────────────────────────────
+        // ── 8: Generate a Winterfell block-validity proof ─────────────────────
+        let (zk_proof, prove_time_ms) =
+            match Self::generate_winterfell_proof(&block, &self.config.validator_pk, &self.config.validator_sk) {
+                Ok(result) => result,
+                Err(e) => {
+                    error!("[BlockProducer] Winterfell proof generation failed: {}", e);
+                    return Err(e);
+                }
+            };
+        block.zk_proof = zk_proof;
+
+        if !block.verify_zkp() {
+            return Err(format!("Winterfell proof verification failed for block {}", next_height));
+        }
+
+        // ── 9: Commit to chain ────────────────────────────────────────────────
         // add_block calls verify_signature(pk_bytes) internally.
         let accepted = {
             let mut chain = self
@@ -432,14 +449,14 @@ impl BlockProducer {
             return Err(format!("Block {} validation failed", next_height));
         }
 
-        // ── 9: Gossip to peers ────────────────────────────────────────────────
+        // ── 10: Gossip to peers ───────────────────────────────────────────────
         // Direct broadcast for low latency; GossipBridge also subscribes to block_tx.
         if let Some(ref node) = self.p2p {
             let payload = serde_json::to_vec(&block).unwrap_or_default();
             node.broadcast(MessageType::Block, payload);
         }
 
-        // ── 10: Drain committed txs from pool ─────────────────────────────────
+        // ── 11: Drain committed txs from pool ─────────────────────────────────
         for tx in &block_txs {
             let tx_id = Self::canonical_tx_id(&ZKTransaction {
                 sender: tx.sender.clone(),
@@ -451,16 +468,10 @@ impl BlockProducer {
             self.tx_pool.remove_confirmed(&tx_id).await;
         }
 
-        // ── 11: Record block in live benchmark ────────────────────────────────
+        // ── 12: Record block in live benchmark ────────────────────────────────
         // This is the production instrumentation path: real wall-clock timings
         // from actual block production (not the simulation model).
         let block_time_ms = block_start.elapsed().as_millis() as u64;
-        // Proof time: groth16 block validity proof is generated inside sign_block;
-        // we approximate it as the time from after state commit to after signing.
-        // For a more precise measurement, block.rs could expose a separate timer.
-        // Here we use 847ms as the average measured on testnet (whitepaper §17.3),
-        // adjusted by actual block_time deviation.
-        let prove_time_ms = block_time_ms.saturating_sub(50).max(100);
         self.bench
             .lock()
             .record_block(block_txs.len(), prove_time_ms, block_time_ms);
@@ -480,6 +491,34 @@ impl BlockProducer {
             "{}:{}:{}:{}",
             zt.sender, zt.receiver, zt.amount, zt.timestamp
         )
+    }
+
+    fn generate_winterfell_proof(
+        block: &Block,
+        validator_pk: &[u8],
+        validator_sk: &[u8],
+    ) -> Result<(Vec<u8>, u64), String> {
+        let start = Instant::now();
+        let mut block_hash = [0u8; 32];
+        let block_hash_hex = block.compute_hash();
+        hex::decode_to_slice(&block_hash_hex, &mut block_hash)
+            .map_err(|e| format!("Failed to decode block hash: {}", e))?;
+
+        let sk_seed_digest = Sha3_256::digest(validator_sk);
+        let mut sk_seed_bytes = [0u8; 32];
+        sk_seed_bytes.copy_from_slice(&sk_seed_digest);
+        let circuit = BlockValidityCircuit::for_proving(
+            block.index,
+            block.epoch_id,
+            block.transactions.len() as u64,
+            &block.merkle_root,
+            validator_pk,
+            block_hash,
+            sk_seed_bytes,
+        );
+        let proof = BlockProver::new().prove(circuit)?;
+
+        Ok((proof, start.elapsed().as_millis() as u64))
     }
 }
 

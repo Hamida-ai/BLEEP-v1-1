@@ -34,6 +34,7 @@ ndarray = "0.15.1"                      # For tensor & array ops
 # Networking & State (referenced modules)
 bleep-core = { path = "../bleep-core" }
 bleep-crypto = { path = "../bleep-crypto" }
+bleep-zkp = { path = "../bleep-zkp" }
 bleep-p2p = { path = "../bleep-p2p" }
 bleep-vm       = { path = "../bleep-vm" }
 bleep-state    = { path = "../bleep-state" }
