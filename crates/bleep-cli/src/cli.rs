@@ -149,7 +149,7 @@ async fn run(cmd: Commands) -> Result<()> {
                     }
                 }
                 WalletCommand::Balance => {
-                    let wallets = manager.list_wallets();
+                    let wallets = manager.list_wallets().to_vec();
                     if wallets.is_empty() {
                         println!("No wallets found. Run `bleep-cli wallet create` first.");
                     } else {
@@ -159,6 +159,7 @@ async fn run(cmd: Commands) -> Result<()> {
                             let addr = w.address();
                             match get_account_state(&rpc, addr).await {
                                 Ok((balance, nonce, root)) => {
+                                    let _ = manager.update_balance(addr, balance.clone());
                                     println!(
                                         "Address: {}  Balance: {} BLEEP  Nonce: {}  Root: {}",
                                         addr,
@@ -172,6 +173,7 @@ async fn run(cmd: Commands) -> Result<()> {
                                     let state_dir = std::env::var("BLEEP_STATE_DIR")
                                         .unwrap_or_else(|_| "/tmp/bleep-state".to_string());
                                     let balance = query_balance_local(&state_dir, addr);
+                                    let _ = manager.update_balance(addr, balance.to_string());
                                     println!(
                                         "Address: {}  Balance: {} BLEEP  (offline — node at {} unreachable)",
                                         addr, balance, rpc

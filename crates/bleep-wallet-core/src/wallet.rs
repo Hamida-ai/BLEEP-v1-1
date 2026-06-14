@@ -45,6 +45,9 @@ pub struct EncryptedWallet {
     /// Empty if no signing key is stored.
     #[serde(default)]
     pub signing_key: Vec<u8>,
+    /// Persisted wallet balance as a decimal string.
+    #[serde(default = "default_balance")]
+    pub balance: String,
     /// BLEEP1<hex40> address derived from `falcon_keys`.
     pub address: String,
     /// Human-readable label (optional).
@@ -61,6 +64,7 @@ impl EncryptedWallet {
             falcon_keys,
             kyber_keys,
             signing_key: vec![],
+            balance: default_balance(),
             address,
             label: None,
         }
@@ -82,6 +86,7 @@ impl EncryptedWallet {
             falcon_keys: falcon_pk,
             kyber_keys,
             signing_key,
+            balance: default_balance(),
             address,
             label: None,
         })
@@ -95,6 +100,7 @@ impl EncryptedWallet {
             falcon_keys: falcon_pk,
             kyber_keys,
             signing_key: falcon_sk,
+            balance: default_balance(),
             address,
             label: None,
         }
@@ -198,6 +204,10 @@ pub fn decrypt_key(blob: &[u8], password: &str, address: &str) -> Result<Vec<u8>
         .map_err(|_| "AES-GCM decryption failed — wrong password or corrupted key".into())
 }
 
+fn default_balance() -> String {
+    "0".to_string()
+}
+
 // ─── WalletManager ────────────────────────────────────────────────────────────
 
 /// Manages a collection of wallets persisted as JSON.
@@ -261,6 +271,20 @@ impl WalletManager {
         Ok(self.wallets.len() < before)
     }
 
+    pub fn update_balance(
+        &mut self,
+        address: &str,
+        balance: impl Into<String>,
+    ) -> Result<bool, Box<dyn Error>> {
+        let Some(wallet) = self.wallets.iter_mut().find(|w| w.address == address) else {
+            return Ok(false);
+        };
+
+        wallet.balance = balance.into();
+        self.persist()?;
+        Ok(true)
+    }
+
     fn persist(&self) -> Result<(), Box<dyn Error>> {
         if let Some(path) = &self.path {
             let json = serde_json::to_string_pretty(&self.wallets)?;
@@ -308,6 +332,22 @@ mod tests {
         let b1 = encrypt_key(sk, "pw", addr).unwrap();
         let b2 = encrypt_key(sk, "pw", addr).unwrap();
         assert_ne!(b1, b2); // different nonces each call
+    }
+
+    #[test]
+    fn legacy_wallet_json_defaults_balance_to_zero() {
+        let json = r#"{
+            "falcon_keys": [1, 2, 3],
+            "kyber_keys": [4, 5, 6],
+            "signing_key": [],
+            "address": "BLEEP1legacy",
+            "label": null
+        }"#;
+
+        let wallet: EncryptedWallet = serde_json::from_str(json).unwrap();
+
+        assert_eq!(wallet.balance, "0");
+        assert_eq!(wallet.address, "BLEEP1legacy");
     }
 
     #[test]
