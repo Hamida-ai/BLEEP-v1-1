@@ -291,6 +291,12 @@ pub struct ValidatorRegistry {
     total_active_stake: u128,
 }
 
+impl bleep_sig_availability::ValidatorRegistry for ValidatorRegistry {
+    fn active_validator_count(&self) -> u32 {
+        self.active_validators.len() as u32
+    }
+}
+
 impl ValidatorRegistry {
     /// Create a new validator registry.
     pub fn new() -> Self {
@@ -299,6 +305,11 @@ impl ValidatorRegistry {
             active_validators: BTreeSet::new(),
             total_active_stake: 0,
         }
+    }
+
+    /// Number of validators participating in the current active set.
+    pub fn active_validator_count(&self) -> u32 {
+        self.active_validators.len() as u32
     }
 
     /// Register a new validator.

@@ -396,7 +396,10 @@ impl SigAvailabilityLayer {
             return;
         }
         self.store.cache_full_sig(
-            &resp.block_id, resp.tx_index, resp.full_sig.clone(), resp.tx_signer_pk,
+            &resp.block_id,
+            resp.tx_index,
+            resp.full_sig.clone(),
+            resp.tx_signer_pk.clone(),
         );
     }
 }

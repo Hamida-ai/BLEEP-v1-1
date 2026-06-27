@@ -201,19 +201,21 @@ impl SigAvailabilityStore {
             .map(|a| a.sig_count)
             .unwrap_or(att.attested_bitmap.capacity());
 
-        self.inner.merged_states
-            .entry(block_key)
-            .or_insert_with(|| {
-                Mutex::new(MergedBitmapState {
-                    merged:         TxBitmap::new(ann_sig_count),
-                    attestor_count: 0,
-                })
-            })
-            .lock()
-            .and_modify(|state| {
-                state.merged.merge(&att.attested_bitmap);
-                state.attestor_count += 1;
-            });
+        {
+            let merged_state = self
+                .inner
+                .merged_states
+                .entry(block_key)
+                .or_insert_with(|| {
+                    Mutex::new(MergedBitmapState {
+                        merged:         TxBitmap::new(ann_sig_count),
+                        attestor_count: 0,
+                    })
+                });
+            let mut merged_state = merged_state.lock();
+            merged_state.merged.merge(&att.attested_bitmap);
+            merged_state.attestor_count += 1;
+        }
 
         true
     }

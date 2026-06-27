@@ -74,6 +74,10 @@ use bleep_state::state_manager::StateManager;
 use bleep_consensus::slashing_engine::SlashingEngine;
 use bleep_consensus::validator_identity::{ValidatorIdentity, ValidatorRegistry};
 use bleep_consensus::{run_consensus_engine, BlockProducer};
+use bleep_sig_availability::{
+    AvailabilityConfig, MempoolSigCache, SigAvailabilityGossipHandler, SigAvailabilityLayer,
+    ValidatorRegistry as SalValidatorRegistry,
+};
 
 // ── Scheduler ─────────────────────────────────────────────────────────────────
 use bleep_scheduler::{BlockTick, Scheduler};
@@ -85,6 +89,7 @@ use bleep_governance::governance_core::GovernanceEngine;
 // ── P2P ───────────────────────────────────────────────────────────────────────
 use bleep_core::block_validation::BlockValidator;
 use bleep_p2p::p2p_node::{P2PNode, P2PNodeConfig};
+use bleep_p2p::sig_availability::SigAvailabilityBridge;
 use bleep_p2p::types::MessageType;
 
 // ── Wallet & PAT ─────────────────────────────────────────────────────────────
@@ -114,6 +119,42 @@ use hex;
 use warp;
 
 const DEFAULT_BLEEP_JWT_SECRET_B64: &str = "UtQcXNbNejElXUMcGocAuRh+YLiIgR9onZ1+PUJtJiU="; // Local dev fallback; set BLEEP_JWT_SECRET in production.
+
+struct ValidatorRegistryAdapter {
+    inner: Arc<Mutex<ValidatorRegistry>>,
+}
+
+impl SalValidatorRegistry for ValidatorRegistryAdapter {
+    fn active_validator_count(&self) -> u32 {
+        self.inner.lock().active_validator_count()
+    }
+}
+
+struct TxPoolSigCache {
+    tx_pool: Arc<TransactionPool>,
+}
+
+impl MempoolSigCache for TxPoolSigCache {
+    fn get_sig(&self, sig_hash: &[u8; 32]) -> Option<Vec<u8>> {
+        let txs = tokio::runtime::Handle::current().block_on(self.tx_pool.get_transactions());
+        txs.into_iter().find_map(|tx| {
+            let candidate = bleep_sig_availability::hash_sig(&tx.signature);
+            (candidate == *sig_hash).then_some(tx.signature)
+        })
+    }
+
+    fn get_signer_pk(&self, sig_hash: &[u8; 32]) -> Option<Vec<u8>> {
+        let txs = tokio::runtime::Handle::current().block_on(self.tx_pool.get_transactions());
+        txs.into_iter().find_map(|tx| {
+            let candidate = bleep_sig_availability::hash_sig(&tx.signature);
+            if candidate == *sig_hash {
+                Some(tx.signature[..64].to_vec())
+            } else {
+                None
+            }
+        })
+    }
+}
 
 #[tokio::main]
 async fn main() {
@@ -413,6 +454,22 @@ async fn run() -> Result<(), Box<dyn Error>> {
         p2p_node.peer_count()
     );
 
+    let (sal_handler, sal_rx) = SigAvailabilityGossipHandler::new();
+    let sal_bridge = Arc::new(SigAvailabilityBridge::new(sal_handler.clone(), Some(Arc::clone(&p2p_node))));
+    let sal_layer = Arc::new(SigAvailabilityLayer::new(
+        sphincs_sk.clone(),
+        sphincs_pk.clone(),
+        sal_bridge.clone(),
+        Arc::new(ValidatorRegistryAdapter {
+            inner: Arc::clone(&validator_registry),
+        }),
+        0,
+        AvailabilityConfig::default(),
+    ));
+    let sal_mempool_cache = Arc::new(TxPoolSigCache { tx_pool: Arc::clone(&tx_pool) });
+    sal_layer.start(sal_rx, sal_mempool_cache);
+    info!("  ✅ Signature Availability Layer connected to P2P and consensus");
+
     // ── Step 10: MempoolBridge ────────────────────────────────────────────────
     info!("🔄 [13/16] Wiring MempoolBridge (P2P → ExecutionPool)…");
     let bridge_mempool = Arc::clone(&mempool);
@@ -427,7 +484,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
 
     // Build BlockProducer — proper (sk, pk) keypair, VM execution per-tx
     // GossipBridge subscribes to block_tx and handles P2P broadcast externally
-    let (block_producer, block_rx) = BlockProducer::new(
+    let (block_producer, block_rx) = BlockProducer::new_with_sig_availability(
         hex::encode(&sphincs_pk[..8]), // validator_id (first 8 bytes of SPHINCS+ PK)
         1_000_000u64,                  // stake weight
         Arc::clone(&tx_pool),
@@ -436,6 +493,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
         sphincs_sk.clone(),          // full SPHINCS+ SK bytes (64 bytes)
         sphincs_pk.clone(),          // full SPHINCS+ PK bytes (64 bytes, FIPS 205 SL5)
         Some(Arc::clone(&p2p_node)), // direct gossip broadcast
+        Some(sal_bridge.clone()),
     );
 
     // Subscribe a second receiver for GossipBridge BEFORE the producer starts
@@ -601,6 +659,11 @@ async fn run() -> Result<(), Box<dyn Error>> {
         loop {
             match inbound_p2p_node.recv().await {
                 Some((_peer_id, msg)) => {
+                    if msg.message_type == MessageType::SigAvailability {
+                        sal_bridge.handle_inbound_message(msg);
+                        continue;
+                    }
+
                     if msg.message_type != MessageType::Block {
                         continue; // not a block message
                     }

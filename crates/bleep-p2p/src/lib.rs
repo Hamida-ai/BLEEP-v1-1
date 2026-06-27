@@ -51,10 +51,12 @@ pub mod onion_routing;
 pub mod p2p_node;
 pub mod peer_manager;
 pub mod quantum_crypto;
+pub mod sig_availability;
 pub mod types;
 
 // Re-export the most commonly used items at crate root
 pub use error::{P2PError, P2PResult};
 pub use p2p_node::{NodeHandle, P2PNode, P2PNodeConfig};
 pub use peer_manager::{PeerEvent, PeerManager, PeerManagerConfig};
+pub use sig_availability::SigAvailabilityBridge;
 pub use types::{MessageType, NodeId, PeerInfo, PeerStatus, SecureMessage};

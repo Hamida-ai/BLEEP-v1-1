@@ -39,6 +39,7 @@ dashmap = "5.5.3"
 lru = "0.18.0"
 chrono = { version = "0.4", features = ["serde"] }
 socket2 = "0.5"
+bleep-sig-availability = { path = "../bleep-sig-availability" }
 
 [dev-dependencies]
 tokio = { version = "1.36", features = ["full", "test-util"] }

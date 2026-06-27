@@ -72,6 +72,7 @@ bleep-interop     = { path = "crates/bleep-interop" }
 bleep-p2p         = { path = "crates/bleep-p2p" }
 bleep-pat         = { path = "crates/bleep-pat" }
 bleep-rpc         = { path = "crates/bleep-rpc" }
+bleep-sig-availability = { path = "crates/bleep-sig-availability" }
 bleep-zkp        = { path = "crates/bleep-zkp" }
 bleep-state       = { path = "crates/bleep-state" }
 bleep-telemetry   = { path = "crates/bleep-telemetry" }

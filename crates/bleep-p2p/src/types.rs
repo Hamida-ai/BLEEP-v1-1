@@ -153,6 +153,8 @@ pub enum MessageType {
     Transaction,
     /// New or syncing block.
     Block,
+    /// Signature Availability Layer announcement and attestation gossip.
+    SigAvailability,
     /// Kademlia peer discovery (FIND_NODE / FIND_VALUE).
     PeerDiscovery,
     /// On-chain governance vote or proposal.
@@ -210,13 +212,14 @@ fn message_type_tag(mt: &MessageType) -> u8 {
     match mt {
         MessageType::Transaction => 0,
         MessageType::Block => 1,
-        MessageType::PeerDiscovery => 2,
-        MessageType::Governance => 3,
-        MessageType::Gossip => 4,
-        MessageType::OnionRelay => 5,
-        MessageType::Ping => 6,
-        MessageType::Pong => 7,
-        MessageType::ZkHandshake => 8,
+        MessageType::SigAvailability => 2,
+        MessageType::PeerDiscovery => 3,
+        MessageType::Governance => 4,
+        MessageType::Gossip => 5,
+        MessageType::OnionRelay => 6,
+        MessageType::Ping => 7,
+        MessageType::Pong => 8,
+        MessageType::ZkHandshake => 9,
         MessageType::Custom(_) => 255,
     }
 }

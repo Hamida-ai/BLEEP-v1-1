@@ -38,6 +38,7 @@ bleep-zkp = { path = "../bleep-zkp" }
 bleep-p2p = { path = "../bleep-p2p" }
 bleep-vm       = { path = "../bleep-vm" }
 bleep-state    = { path = "../bleep-state" }
+bleep-sig-availability = { path = "../bleep-sig-availability" }
 
 # Randomness
 rand = "0.8.5"

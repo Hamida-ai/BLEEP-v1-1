@@ -7,7 +7,6 @@ license     = "Apache-2.0"
 authors     = ["Muhammad Attahir"]
 
 [dependencies]
-bleep-core   = { path = "../bleep-core"   }
 bleep-crypto = { path = "../bleep-crypto" }
 
 # Cryptographic hashing
@@ -26,6 +25,7 @@ dashmap = "5"
 # Serialisation
 serde        = { version = "1", features = ["derive"] }
 bincode      = "1"
+hex          = "0.4"
 
 # Synchronisation primitives
 parking_lot = "0.12"

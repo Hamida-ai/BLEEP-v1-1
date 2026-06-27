@@ -57,7 +57,7 @@ pub struct GossipProtocol {
     /// LRU cache of already-seen message IDs (prevents re-broadcast).
     seen: Arc<Mutex<LruCache<[u8; 32], ()>>>,
     /// Pending messages to be spread on the next tick.
-    pending: Arc<Mutex<Vec<(SecureMessage, Option<NodeId>)>>>,
+    pub(crate) pending: Arc<Mutex<Vec<(SecureMessage, Option<NodeId>)>>>,
 }
 
 impl GossipProtocol {

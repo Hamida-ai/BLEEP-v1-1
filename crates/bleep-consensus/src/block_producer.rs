@@ -34,8 +34,9 @@ use bleep_core::block::{Block, ConsensusMode, Transaction};
 use bleep_core::blockchain::Blockchain;
 use bleep_core::transaction_pool::TransactionPool;
 use bleep_core::ZKTransaction;
-use bleep_zkp::{BlockProver, BlockValidityCircuit};
+use bleep_sig_availability::{broadcast_block_announcement, BlockId, GossipBroadcaster};
 use bleep_state::state_manager::StateManager;
+use bleep_zkp::{BlockProver, BlockValidityCircuit};
 use parking_lot::Mutex as PLMutex;
 use sha3::{Digest, Sha3_256};
 
@@ -117,6 +118,7 @@ pub struct BlockProducer {
     state: Arc<PLMutex<StateManager>>,
     executor: Executor,
     p2p: Option<Arc<P2PNode>>,
+    sal_broadcaster: Option<Arc<dyn GossipBroadcaster>>,
     config: ProducerConfig,
     block_tx: tokio::sync::broadcast::Sender<FinalizedBlock>,
     /// Live TPS benchmark — records wall-clock throughput from real block production.
@@ -141,6 +143,30 @@ impl BlockProducer {
         sphincs_pk_bytes: Vec<u8>,
         p2p: Option<Arc<P2PNode>>,
     ) -> (Self, tokio::sync::broadcast::Receiver<FinalizedBlock>) {
+        Self::new_with_sig_availability(
+            validator_id,
+            _my_stake,
+            tx_pool,
+            blockchain,
+            state,
+            sphincs_sk_bytes,
+            sphincs_pk_bytes,
+            p2p,
+            None,
+        )
+    }
+
+    pub fn new_with_sig_availability(
+        validator_id: String,
+        _my_stake: u64,
+        tx_pool: Arc<TransactionPool>,
+        blockchain: Arc<RwLock<Blockchain>>,
+        state: Arc<PLMutex<StateManager>>,
+        sphincs_sk_bytes: Vec<u8>,
+        sphincs_pk_bytes: Vec<u8>,
+        p2p: Option<Arc<P2PNode>>,
+        sal_broadcaster: Option<Arc<dyn GossipBroadcaster>>,
+    ) -> (Self, tokio::sync::broadcast::Receiver<FinalizedBlock>) {
         let config = ProducerConfig {
             validator_id,
             validator_sk: sphincs_sk_bytes,
@@ -163,6 +189,7 @@ impl BlockProducer {
                 state,
                 executor,
                 p2p,
+                sal_broadcaster,
                 config,
                 block_tx,
                 bench,
@@ -454,6 +481,27 @@ impl BlockProducer {
         if let Some(ref node) = self.p2p {
             let payload = serde_json::to_vec(&block).unwrap_or_default();
             node.broadcast(MessageType::Block, payload);
+        }
+
+        // ── 10b: SIG availability announcement ───────────────────────────────
+        if let Some(ref broadcaster) = self.sal_broadcaster {
+            let sig_hashes: Vec<Vec<u8>> = block_txs.iter().map(|tx| tx.signature.clone()).collect();
+            let (sig_commitment_root, sig_hashes) = bleep_sig_availability::compute_sig_commitment(&sig_hashes);
+            let mut block_hash = [0u8; 32];
+            let hash_hex = block.compute_hash();
+            if let Ok(_) = hex::decode_to_slice(&hash_hex[..64], &mut block_hash) {
+                let block_id = BlockId { height: next_height, block_hash: block_hash };
+                if let Err(e) = broadcast_block_announcement(
+                    broadcaster.as_ref(),
+                    block_id,
+                    sig_commitment_root,
+                    sig_hashes,
+                    &self.config.validator_sk,
+                    self.config.validator_pk.clone(),
+                ) {
+                    warn!("[BlockProducer] SAL announcement failed: {}", e);
+                }
+            }
         }
 
         // ── 11: Drain committed txs from pool ─────────────────────────────────
