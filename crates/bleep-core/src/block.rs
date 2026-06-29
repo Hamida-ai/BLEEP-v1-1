@@ -31,6 +31,11 @@ use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 
 use bleep_zkp::{BlockValidityVerifier, StarkProof};
+use bleep_zkp::{
+    EXTENDED_STARK_MAGIC, EXT_PUB_INPUTS_LEN,
+    ExtendedBlockPublicInputs, ParallelBatchSigProver, bleep_proof_options,
+};
+use bleep_sig_availability::compute_sig_commitment;
 
 // Transaction signature helpers used by block compaction and validation.
 use bleep_crypto::pq_crypto::SignatureScheme;
@@ -107,6 +112,23 @@ pub struct BlockHeader {
     pub shard_registry_root: String,
     pub shard_id: u64,
     pub shard_state_root: String,
+    /// Blake3 Merkle root over SHA3-256(sig_i) for all block transactions.
+    /// Committed into the SPHINCS+ block signature and the extended STARK proof.
+    /// [0u8; 32] for genesis and empty blocks.
+    #[serde(default)]
+    pub sig_commitment_root: [u8; 32],
+}
+
+/// A transaction stripped of its SPHINCS+ signature for bandwidth-efficient gossip.
+/// The full signature is available from the Signature Availability Layer.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompactTransaction {
+    pub sender: String,
+    pub receiver: String,
+    pub amount: u64,
+    pub timestamp: u64,
+    /// SHA3-256(raw_signature) — matches the corresponding leaf in sig_commitment_root.
+    pub sig_hash: [u8; 32],
 }
 
 /// CompactBlock contains only the block header and the transaction hashes.
@@ -115,7 +137,11 @@ pub struct BlockHeader {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompactBlock {
     pub header: BlockHeader,
+    /// SHA3-256 of each transaction (for Merkle membership proofs).
     pub tx_hashes: Vec<[u8; 32]>,
+    /// Full transaction data WITHOUT SPHINCS+ signatures.
+    /// Receivers apply state transitions from this; verify authenticity via sig_commitment_root.
+    pub transactions: Vec<CompactTransaction>,
 }
 
 impl BlockHeader {
@@ -133,6 +159,7 @@ impl BlockHeader {
             shard_registry_root: block.shard_registry_root.clone(),
             shard_id: block.shard_id,
             shard_state_root: block.shard_state_root.clone(),
+            sig_commitment_root: block.sig_commitment_root,
         }
     }
 }
@@ -175,6 +202,11 @@ pub struct Block {
     pub shard_registry_root: String,
     pub shard_id: u64,
     pub shard_state_root: String,
+    /// Blake3 Merkle root over SHA3-256(sig_i) for all transactions in this block.
+    /// Set by BlockProducer before signing; committed into validator_signature and zk_proof.
+    /// [0u8; 32] for genesis blocks and blocks with no real signatures.
+    #[serde(default)]
+    pub sig_commitment_root: [u8; 32],
 }
 
 impl Block {
@@ -195,6 +227,7 @@ impl Block {
             shard_registry_root: "0".repeat(64),
             shard_id: 0,
             shard_state_root: "0".repeat(64),
+            sig_commitment_root: [0u8; 32],
         }
     }
 
@@ -225,15 +258,50 @@ impl Block {
             shard_registry_root,
             shard_id,
             shard_state_root,
+            sig_commitment_root: [0u8; 32],
         }
     }
 
     /// Produce a compact representation of this block suitable for gossip.
+    ///
+    /// SPHINCS+ signatures are stripped. Receivers verify authenticity via
+    /// `header.sig_commitment_root`, which is committed into the block's SPHINCS+
+    /// signature and extended STARK proof.
     pub fn compact(&self) -> CompactBlock {
+        let raw_sigs: Vec<Vec<u8>> = self.transactions.iter()
+            .map(|tx| tx.signature.clone())
+            .collect();
+        let sig_hashes: Vec<[u8; 32]> = if raw_sigs.is_empty() {
+            vec![]
+        } else {
+            let (_, hashes) = compute_sig_commitment(&raw_sigs);
+            hashes
+        };
         CompactBlock {
             header: BlockHeader::from_block(self),
             tx_hashes: self.transactions.iter().map(|tx| tx.tx_hash()).collect(),
+            transactions: self.transactions.iter().enumerate().map(|(i, tx)| {
+                CompactTransaction {
+                    sender: tx.sender.clone(),
+                    receiver: tx.receiver.clone(),
+                    amount: tx.amount,
+                    timestamp: tx.timestamp,
+                    sig_hash: sig_hashes.get(i).copied().unwrap_or([0u8; 32]),
+                }
+            }).collect(),
         }
+    }
+
+    /// Build a gossip payload: serialize as a full Block but with tx signatures zeroed.
+    ///
+    /// This is the bandwidth-efficient gossip path. The sig_commitment_root in the
+    /// block header proves that the proposer computed the correct SAL commitment.
+    pub fn to_gossip(&self) -> Block {
+        let mut gossip = self.clone();
+        for tx in &mut gossip.transactions {
+            tx.signature = vec![];
+        }
+        gossip
     }
 
     // ── Hashing ───────────────────────────────────────────────────────────────
@@ -253,6 +321,9 @@ impl Block {
             self.shard_registry_root,
             self.shard_id
         ));
+        // Bind sig_commitment_root into the block hash so the SPHINCS+ signature
+        // commits to the SAL root. Non-zero only for blocks with real tx signatures.
+        h.update(&self.sig_commitment_root);
         hex::encode(h.finalize())
     }
 
@@ -442,6 +513,7 @@ impl Block {
         ch.update(&self.shard_id.to_le_bytes());
         ch.update(self.shard_state_root.as_bytes());
         ch.update(&(self.transactions.len() as u64).to_le_bytes());
+        ch.update(&self.sig_commitment_root);
         let challenge: [u8; 32] = ch.finalize().into();
 
         let mut rsp = Sha3_256::new();
@@ -463,6 +535,10 @@ impl Block {
     pub fn verify_zkp(&self) -> bool {
         if self.zk_proof.is_empty() {
             return true;
+        }
+        // ── Extended STARK proof (68-column, SAL-bound) ────────────────────
+        if self.zk_proof.starts_with(EXTENDED_STARK_MAGIC) {
+            return self.verify_extended_stark_zkp();
         }
         if self.zk_proof.len() != 64 {
             return StarkProof::from_bytes(&self.zk_proof)
@@ -508,6 +584,7 @@ impl Block {
         ch.update(&self.shard_id.to_le_bytes());
         ch.update(self.shard_state_root.as_bytes());
         ch.update(&(self.transactions.len() as u64).to_le_bytes());
+        ch.update(&self.sig_commitment_root);
         let challenge: [u8; 32] = ch.finalize().into();
 
         if &challenge[..] != stored_challenge {
@@ -521,6 +598,154 @@ impl Block {
         let response: [u8; 32] = rsp.finalize().into();
 
         &response[..] == stored_response
+    }
+
+    // ── Extended STARK verification ───────────────────────────────────────────
+
+    /// Verify a 68-column extended STARK proof that commits to `sig_commitment_root`.
+    ///
+    /// The `zk_proof` bytes must start with `EXTENDED_STARK_MAGIC` (9 bytes),
+    /// followed by 232 bytes of fixed-width public inputs, followed by the
+    /// Winterfell `StarkProof` bytes.
+    fn verify_extended_stark_zkp(&self) -> bool {
+        let proof_bytes = &self.zk_proof;
+        let magic_len = EXTENDED_STARK_MAGIC.len();
+        let total_header = magic_len + EXT_PUB_INPUTS_LEN;
+
+        if proof_bytes.len() <= total_header {
+            log::error!("Extended STARK proof too short: {} bytes", proof_bytes.len());
+            return false;
+        }
+
+        // ── Deserialize public inputs (232-byte fixed encoding) ────────────
+        let pi_bytes = &proof_bytes[magic_len..total_header];
+        let pub_inputs = match Self::decode_ext_pub_inputs(pi_bytes) {
+            Some(pi) => pi,
+            None => {
+                log::error!("Failed to decode extended STARK public inputs");
+                return false;
+            }
+        };
+
+        // ── Cross-check public inputs against block fields ─────────────────
+        // These checks ensure the proof actually corresponds to this block.
+        if pub_inputs.block_index != self.index {
+            log::error!("Extended STARK: block_index mismatch ({} vs {})", pub_inputs.block_index, self.index);
+            return false;
+        }
+        if pub_inputs.epoch_id != self.epoch_id {
+            log::error!("Extended STARK: epoch_id mismatch");
+            return false;
+        }
+        if pub_inputs.tx_count as usize != self.transactions.len() {
+            log::error!("Extended STARK: tx_count mismatch ({} vs {})", pub_inputs.tx_count, self.transactions.len());
+            return false;
+        }
+        if pub_inputs.sig_commitment_root != self.sig_commitment_root {
+            log::error!("Extended STARK: sig_commitment_root mismatch");
+            return false;
+        }
+
+        // ── Verify Winterfell STARK proof ─────────────────────────────────
+        let stark_bytes = &proof_bytes[total_header..];
+        let proof = match winterfell::StarkProof::from_bytes(stark_bytes) {
+            Ok(p) => p,
+            Err(e) => {
+                log::error!("Extended STARK: proof deserialization failed: {:?}", e);
+                return false;
+            }
+        };
+
+        let options = bleep_proof_options();
+        match ParallelBatchSigProver::verify_block(pub_inputs, proof, &options) {
+            Ok(()) => true,
+            Err(e) => {
+                log::error!("Extended STARK: verification failed: {}", e);
+                false
+            }
+        }
+    }
+
+    /// Decode a 232-byte fixed-width `ExtendedBlockPublicInputs` from proof bytes.
+    ///
+    /// Layout (all LE):
+    ///   [0..8]    block_index (u64)
+    ///   [8..16]   epoch_id (u64)
+    ///   [16..20]  tx_count (u32)
+    ///   [20..28]  blocks_per_epoch (u64)
+    ///   [28..32]  sig_count (u32)
+    ///   [32..40]  batch_seq_id (u64)
+    ///   [40..72]  merkle_root_hash ([u8;32])
+    ///   [72..104] validator_pk_hash ([u8;32])
+    ///   [104..136] sk_seed_hash ([u8;32])
+    ///   [136..168] block_hash ([u8;32])
+    ///   [168..200] smt_root ([u8;32])
+    ///   [200..232] sig_commitment_root ([u8;32])
+    fn decode_ext_pub_inputs(b: &[u8]) -> Option<ExtendedBlockPublicInputs> {
+        if b.len() < EXT_PUB_INPUTS_LEN { return None; }
+        let mut off = 0usize;
+
+        macro_rules! read_u64 {
+            () => {{ let v = u64::from_le_bytes(b[off..off+8].try_into().ok()?); off += 8; v }};
+        }
+        macro_rules! read_u32 {
+            () => {{ let v = u32::from_le_bytes(b[off..off+4].try_into().ok()?); off += 4; v }};
+        }
+        macro_rules! read_hash {
+            () => {{ let mut h = [0u8;32]; h.copy_from_slice(&b[off..off+32]); off += 32; h }};
+        }
+
+        let block_index       = read_u64!();
+        let epoch_id          = read_u64!();
+        let tx_count          = read_u32!();
+        let blocks_per_epoch  = read_u64!();
+        let sig_count         = read_u32!();
+        let batch_seq_id      = read_u64!();
+        let merkle_root_hash  = read_hash!();
+        let validator_pk_hash = read_hash!();
+        let sk_seed_hash      = read_hash!();
+        let block_hash        = read_hash!();
+        let smt_root          = read_hash!();
+        let sig_commitment_root = read_hash!();
+
+        Some(ExtendedBlockPublicInputs {
+            block_index, epoch_id, tx_count, blocks_per_epoch,
+            merkle_root_hash, validator_pk_hash, sk_seed_hash,
+            block_hash, smt_root, sig_commitment_root,
+            sig_count, batch_seq_id,
+        })
+    }
+
+    /// Encode an `ExtendedBlockPublicInputs` to 232 bytes (fixed-width, LE).
+    pub fn encode_ext_pub_inputs(pi: &ExtendedBlockPublicInputs) -> [u8; 232] {
+        let mut b = [0u8; 232];
+        let mut off = 0usize;
+
+        macro_rules! write_u64 {
+            ($v:expr) => {{ b[off..off+8].copy_from_slice(&$v.to_le_bytes()); off += 8; }};
+        }
+        macro_rules! write_u32 {
+            ($v:expr) => {{ b[off..off+4].copy_from_slice(&$v.to_le_bytes()); off += 4; }};
+        }
+        macro_rules! write_hash {
+            ($v:expr) => {{ b[off..off+32].copy_from_slice(&$v[..]); off += 32; }};
+        }
+
+        write_u64!(pi.block_index);
+        write_u64!(pi.epoch_id);
+        write_u32!(pi.tx_count);
+        write_u64!(pi.blocks_per_epoch);
+        write_u32!(pi.sig_count);
+        write_u64!(pi.batch_seq_id);
+        write_hash!(pi.merkle_root_hash);
+        write_hash!(pi.validator_pk_hash);
+        write_hash!(pi.sk_seed_hash);
+        write_hash!(pi.block_hash);
+        write_hash!(pi.smt_root);
+        write_hash!(pi.sig_commitment_root);
+
+        let _ = off; // suppress unused warning
+        b
     }
 
     // ── Merkle root ───────────────────────────────────────────────────────────
