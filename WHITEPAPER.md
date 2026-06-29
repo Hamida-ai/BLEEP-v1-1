@@ -204,7 +204,7 @@ SHA3-256 Merkle chain · sync=true"]
 | Crate               | pqcrypto-sphincsplus v0.7.2                                    |
 | Usage               | Transaction signing, block signing, P2P message authentication |
 
-> Bandwidth note: At 4,096 transactions per block with one signature per transaction, aggregate signature data per block is approximately 204 MB. This is the direct, quantified cost of hash-based post-quantum security with no trusted setup. Signature aggregation is a medium-term research direction.
+> **Bandwidth:** Raw SPHINCS+ signature data is ~24.3 MB per block at 512 tx/block. The **Signature Availability Layer** (live, Protocol Version 5) reduces block-gossip bandwidth to **~320 KB per block (~98.7% reduction)** via a Blake3 Merkle commitment (`sig_commitment_root`) over SHA3-256(sig_i), bound into both the SPHINCS+ block signature and the 68-column extended STARK proof. Receiving validators verify authenticity without individual signatures.
 
 ### 3.3 Key Encapsulation — Kyber-1024 / ML-KEM-1024 (FIPS 203)
 
@@ -652,7 +652,7 @@ SelfHealingOrchestrator tracks protocol health: Healthy → Degraded → Critica
 
 ### 11.1 Post-Quantum Primitives Introduce Measurable Overhead
 
-SPHINCS+-SHAKE-256f-simple produces 49,856-byte signatures. On a 4,096-transaction block, aggregate signature data is approximately 204 MB, imposing a minimum bandwidth requirement of approximately 544 KB/s from signatures alone. Kyber-1024 public keys are 1,568 bytes compared to 32-byte Curve25519 keys. Winterfell proof generation averages ~850 ms per block. These overheads are the direct, quantified cost of transparent post-quantum security with no trusted setup — accepted as an explicit design trade-off.
+SPHINCS+-SHAKE-256f-simple produces 49,856-byte signatures. The Signature Availability Layer (Protocol Version 5) reduces per-block gossip bandwidth from ~24.3 MB (512 tx × 49,856 bytes raw) to ~320 KB (~98.7% reduction). The `sig_commitment_root` — a Blake3 Merkle root over SHA3-256(sig_i) for all block transactions — is stamped on the block before SPHINCS+ signing and committed into the extended STARK proof, so receivers verify authenticity without individual signatures. Kyber-1024 public keys are 1,568 bytes compared to 32-byte Curve25519 keys. Winterfell proof generation averages ~850–950 ms per block, within the 3,000 ms slot budget. These overheads are the direct, quantified cost of transparent post-quantum security with no trusted setup — accepted as an explicit design trade-off.
 
 ### 11.2 Signature Aggregation Not Yet Available
 
@@ -689,7 +689,7 @@ Tiers 3 and 4 of BLEEP Connect are live on Ethereum Sepolia. Tiers 1 and 2 are m
 
 ### 12.1 Signature Aggregation
 
-Hash-based signature aggregation combining Merkle-based multi-signatures with SPHINCS+ would reduce per-block vote bandwidth by O(log n) in validator count — a medium-term research direction.
+The Signature Availability Layer (Sprint 10) resolves block-propagation bandwidth via Blake3 Merkle commitment over SHA3-256(sig_i). Hash-based Merkle multi-signature aggregation reducing validator vote bandwidth by O(log n) in validator count remains a medium-term research direction for Phase 8.
 
 ### 12.2 Phase 9 — Quantum-Safe Mainnet (2028+)
 
