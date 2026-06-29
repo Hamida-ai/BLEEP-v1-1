@@ -300,7 +300,7 @@ graph LR
 | Crate | `pqcrypto-sphincsplus` v0.7.2 |
 | Usage | Transaction signing, block signing, P2P message authentication |
 
-> **Bandwidth note:** At 4,096 transactions per block with one signature per transaction, aggregate signature data per block is approximately 204 MB. This is the direct, quantified cost of hash-based post-quantum security with no trusted setup. Signature aggregation is a medium-term research direction tracked in [Phase 8 roadmap](ROADMAP.md).
+> **Bandwidth:** SPHINCS+ signatures are 49,856 bytes each. Raw per-block signature data at 512 tx/block is ~24.3 MB. The **Signature Availability Layer** (live in Protocol Version 5) reduces block-gossip bandwidth to **~320 KB per block (~98.7% reduction)** by replacing per-transaction signature propagation with a Blake3 Merkle commitment (`sig_commitment_root`) bound into the SPHINCS+ block signature and the 68-column extended STARK proof. Individual signatures are available on demand from the SAL gossip store.
 
 ### Key Encapsulation — Kyber-1024 / ML-KEM-1024 (FIPS 203)
 
