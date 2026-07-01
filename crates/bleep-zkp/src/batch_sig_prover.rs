@@ -31,7 +31,7 @@ use winterfell::{
     crypto::{hashers::Blake3_256, DefaultRandomCoin},
     AuxRandElements, ConstraintCompositionCoefficients,
     DefaultConstraintEvaluator, DefaultTraceLde, PartitionOptions,
-    ProofOptions, Prover, TraceInfo, TracePolyTable, TraceTable,
+    ProofOptions, Prover, Trace, TraceInfo, TracePolyTable, TraceTable,
     StarkDomain, AcceptableOptions,
     verify as winterfell_verify,
 };
@@ -188,14 +188,14 @@ impl ParallelBatchSigProver {
     pub fn verify_block(
         pub_inputs: ExtendedBlockPublicInputs,
         proof:      winterfell::Proof,
-        _options:   &ProofOptions,
+        options:    &ProofOptions,
     ) -> Result<(), BatchVerifyError> {
         winterfell_verify::<
             ExtendedBlockValidityAir,
             Blake3_256<BaseElement>,
             DefaultRandomCoin<Blake3_256<BaseElement>>,
             winterfell::crypto::MerkleTree<Blake3_256<BaseElement>>,
-        >(proof, pub_inputs, &AcceptableOptions::MinConjecturedSecurity(95))
+        >(proof, pub_inputs, &AcceptableOptions::OptionSet(vec![options.clone()]))
         .map_err(|e| BatchVerifyError::WinterfellVerify(format!("{e:?}")))
     }
 
@@ -503,7 +503,7 @@ mod tests {
 
         let trace = prover.build_trace(&pi2, &hashes);
         assert_eq!(trace.width(), TRACE_WIDTH);
-        // trace_len = next_power_of_two(max(1, MIN_TRACE_LENGTH=4)) = 4
+        // trace_len = next_power_of_two(max(1, MIN_TRACE_LENGTH=8)) = 8
         assert!(trace.length() >= MIN_TRACE_LENGTH);
         assert!(trace.length().is_power_of_two());
     }

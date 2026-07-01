@@ -50,8 +50,8 @@ use winterfell::{
 /// Total number of columns in the extended trace.
 pub const TRACE_WIDTH: usize = 68;
 
-/// Minimum trace length (Winterfell requires ≥ 4).
-pub const MIN_TRACE_LENGTH: usize = 4;
+/// Minimum trace length required by the Winterfell prover/verifier stack.
+pub const MIN_TRACE_LENGTH: usize = 8;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Column index constants
