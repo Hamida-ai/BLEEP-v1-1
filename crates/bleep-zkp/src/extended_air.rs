@@ -38,9 +38,9 @@
 
 use serde::{Deserialize, Serialize};
 use winterfell::{
-    Air, AirContext, Assertion, EvaluationFrame, FieldExtension,
+    Air, AirContext, Assertion, BatchingMethod, EvaluationFrame, FieldExtension,
     ProofOptions, TraceInfo, TransitionConstraintDegree,
-    math::{fields::f128::BaseElement, FieldElement, StarkField, ToElements},
+    math::{fields::f128::BaseElement, FieldElement, ToElements},
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -368,5 +368,7 @@ pub fn bleep_proof_options() -> ProofOptions {
         FieldExtension::None,
         8,                        // FRI folding factor
         127,                      // FRI max remainder degree
+        BatchingMethod::Linear,
+        BatchingMethod::Linear,
     )
 }

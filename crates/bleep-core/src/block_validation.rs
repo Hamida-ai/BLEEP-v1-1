@@ -2,7 +2,6 @@ use crate::block::{Block, Transaction};
 use bleep_sig_availability::compute_sig_commitment;
 use hex;
 use rayon::prelude::*;
-use sha3::{Digest, Sha3_256};
 
 pub struct BlockValidator;
 

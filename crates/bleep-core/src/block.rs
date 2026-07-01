@@ -648,7 +648,7 @@ impl Block {
 
         // ── Verify Winterfell STARK proof ─────────────────────────────────
         let stark_bytes = &proof_bytes[total_header..];
-        let proof = match winterfell::StarkProof::from_bytes(stark_bytes) {
+        let proof = match winterfell::Proof::from_bytes(stark_bytes) {
             Ok(p) => p,
             Err(e) => {
                 log::error!("Extended STARK: proof deserialization failed: {:?}", e);

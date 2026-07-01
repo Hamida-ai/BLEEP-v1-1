@@ -688,8 +688,7 @@ impl BlockProducer {
             .map_err(|e| format!("Extended STARK prove failed: {:?}", e))?;
 
         // ── Serialise: magic | pub_inputs (232 bytes) | proof bytes ──────
-        let proof_bytes = stark_proof.to_bytes()
-            .map_err(|e| format!("Extended STARK serialisation failed: {:?}", e))?;
+        let proof_bytes = stark_proof.to_bytes();
 
         let pi_encoded = Block::encode_ext_pub_inputs(&pub_inputs);
 

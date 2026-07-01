@@ -24,23 +24,20 @@
 //! ```
 
 use std::sync::Arc;
-use rayon::prelude::*;
 use sha3::{Digest, Sha3_256};
 use winterfell::{
     math::{fields::f128::BaseElement, FieldElement, StarkField},
     matrix::ColMatrix,
-    crypto::hashers::Blake3_256,
-    // Prover infrastructure — re-exported from winterfell root in v0.13
-    AuxTraceRandElements, ConstraintCompositionCoefficients,
-    DefaultConstraintEvaluator, DefaultRandomCoin, DefaultTraceLde,
-    ProofOptions, Prover, StarkProof, TraceInfo, TracePolyTable, TraceTable,
-    // Domain and verification
+    crypto::{hashers::Blake3_256, DefaultRandomCoin},
+    AuxRandElements, ConstraintCompositionCoefficients,
+    DefaultConstraintEvaluator, DefaultTraceLde, PartitionOptions,
+    ProofOptions, Prover, TraceInfo, TracePolyTable, TraceTable,
     StarkDomain, AcceptableOptions,
     verify as winterfell_verify,
 };
 
 use crate::extended_air::{
-    bleep_proof_options, bytes_hi, bytes_lo,
+    bytes_hi, bytes_lo,
     ExtendedBlockPublicInputs, ExtendedBlockValidityAir, TRACE_WIDTH, MIN_TRACE_LENGTH,
     COL_BLOCK_INDEX, COL_EPOCH_ID, COL_TX_COUNT, COL_BLOCKS_PER_EPOCH,
     COL_MERKLE_ROOT_HI, COL_MERKLE_ROOT_LO, COL_VALIDATOR_PK_HI, COL_VALIDATOR_PK_LO,
@@ -86,7 +83,7 @@ pub enum BatchVerifyError {
 /// Full output of a successful `prove_block` call.
 pub struct BatchProveResult {
     /// Winterfell STARK proof — embed in the block header.
-    pub proof: StarkProof,
+    pub proof: winterfell::Proof,
     /// Blake3 Merkle root over all `sig_hashes` — embed in the block header and
     /// broadcast via `SigCommitmentAnnouncement`.
     pub sig_commitment_root: [u8; 32],
@@ -190,14 +187,15 @@ impl ParallelBatchSigProver {
     /// public inputs. Approximately 12 ms on reference hardware.
     pub fn verify_block(
         pub_inputs: ExtendedBlockPublicInputs,
-        proof:      StarkProof,
-        options:    &ProofOptions,
+        proof:      winterfell::Proof,
+        _options:   &ProofOptions,
     ) -> Result<(), BatchVerifyError> {
         winterfell_verify::<
             ExtendedBlockValidityAir,
             Blake3_256<BaseElement>,
             DefaultRandomCoin<Blake3_256<BaseElement>>,
-        >(proof, pub_inputs, &AcceptableOptions::Defined(options.clone()))
+            winterfell::crypto::MerkleTree<Blake3_256<BaseElement>>,
+        >(proof, pub_inputs, &AcceptableOptions::MinConjecturedSecurity(95))
         .map_err(|e| BatchVerifyError::WinterfellVerify(format!("{e:?}")))
     }
 
@@ -313,7 +311,7 @@ impl ParallelBatchSigProver {
                 if next_is_active {
                     // Increment processed_count.
                     let cur_count = state[COL_PROCESSED_COUNT].as_int() as u64;
-                    state[COL_PROCESSED_COUNT] = BaseElement::new(cur_count + 1);
+                    state[COL_PROCESSED_COUNT] = BaseElement::new((cur_count + 1) as u128);
                     state[COL_IS_ACTIVE]       = BaseElement::ONE;
 
                     // Write the sig_hash for the transaction at next_row.
@@ -343,10 +341,18 @@ impl Prover for ParallelBatchSigProver {
     type Air         = ExtendedBlockValidityAir;
     type Trace       = TraceTable<BaseElement>;
     type HashFn      = Blake3_256<BaseElement>;
+    type VC          = winterfell::crypto::MerkleTree<Self::HashFn>;
     type RandomCoin  = DefaultRandomCoin<Blake3_256<BaseElement>>;
-    type TraceLde    = DefaultTraceLde<BaseElement, Blake3_256<BaseElement>>;
+    type TraceLde<E>
+        = winterfell::DefaultTraceLde<E, Self::HashFn, Self::VC>
+    where
+        E: FieldElement<BaseField = BaseElement>;
     type ConstraintEvaluator<'a, E: FieldElement<BaseField = BaseElement>> =
         DefaultConstraintEvaluator<'a, ExtendedBlockValidityAir, E>;
+    type ConstraintCommitment<E>
+        = winterfell::DefaultConstraintCommitment<E, Self::HashFn, Self::VC>
+    where
+        E: FieldElement<BaseField = BaseElement>;
 
     /// Extract public inputs from the first row of the trace.
     fn get_pub_inputs(&self, trace: &TraceTable<BaseElement>) -> ExtendedBlockPublicInputs {
@@ -388,17 +394,39 @@ impl Prover for ParallelBatchSigProver {
         trace_info:  &TraceInfo,
         main_trace:  &ColMatrix<BaseElement>,
         domain:      &StarkDomain<BaseElement>,
-    ) -> (Self::TraceLde, TracePolyTable<E>) {
-        DefaultTraceLde::new(trace_info, main_trace, domain)
+        partition_option: PartitionOptions,
+    ) -> (Self::TraceLde<E>, TracePolyTable<E>) {
+        DefaultTraceLde::new(trace_info, main_trace, domain, partition_option)
     }
 
-    fn new_evaluator<'a, E: FieldElement<BaseField = BaseElement>>(
-        &'a self,
+    fn new_evaluator<'a, E>(
+        &self,
         air:                      &'a Self::Air,
-        aux_rand_elements:        Option<AuxTraceRandElements<E>>,
+        aux_rand_elements:        Option<AuxRandElements<E>>,
         composition_coefficients: ConstraintCompositionCoefficients<E>,
-    ) -> Self::ConstraintEvaluator<'a, E> {
+    ) -> Self::ConstraintEvaluator<'a, E>
+    where
+        E: FieldElement<BaseField = Self::BaseField>,
+    {
         DefaultConstraintEvaluator::new(air, aux_rand_elements, composition_coefficients)
+    }
+
+    fn build_constraint_commitment<E>(
+        &self,
+        composition_poly_trace: winterfell::CompositionPolyTrace<E>,
+        num_constraint_composition_columns: usize,
+        domain: &StarkDomain<BaseElement>,
+        partition_options: PartitionOptions,
+    ) -> (Self::ConstraintCommitment<E>, winterfell::CompositionPoly<E>)
+    where
+        E: FieldElement<BaseField = BaseElement>,
+    {
+        winterfell::DefaultConstraintCommitment::new(
+            composition_poly_trace,
+            num_constraint_composition_columns,
+            domain,
+            partition_options,
+        )
     }
 }
 
@@ -505,6 +533,8 @@ mod tests {
             winterfell::FieldExtension::None,
             4,
             7,
+            winterfell::BatchingMethod::Linear,
+            winterfell::BatchingMethod::Linear,
         );
         let prover = ParallelBatchSigProver::new(100, fast_options.clone());
         let sigs   = fake_sigs(4);
@@ -525,7 +555,16 @@ mod tests {
 
     #[test]
     fn tampered_pub_inputs_fails_verify() {
-        let fast_options = ProofOptions::new(10, 4, 0, winterfell::FieldExtension::None, 4, 7);
+        let fast_options = ProofOptions::new(
+            10,
+            4,
+            0,
+            winterfell::FieldExtension::None,
+            4,
+            7,
+            winterfell::BatchingMethod::Linear,
+            winterfell::BatchingMethod::Linear,
+        );
         let prover = ParallelBatchSigProver::new(100, fast_options.clone());
         let sigs   = fake_sigs(4);
         let sk_seed = [0x42u8; 32];

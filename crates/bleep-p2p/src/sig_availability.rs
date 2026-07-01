@@ -7,7 +7,7 @@ use bleep_sig_availability::{
 use tracing::{debug, warn};
 
 use crate::p2p_node::P2PNode;
-use crate::types::{MessageType, NodeId, SecureMessage};
+use crate::types::{MessageType, SecureMessage};
 
 /// Bridges SAL gossip frames onto the live P2P network and routes inbound
 /// SAL payloads into the SAL gossip handler.
