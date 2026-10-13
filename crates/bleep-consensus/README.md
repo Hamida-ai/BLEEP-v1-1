@@ -177,6 +177,13 @@ cargo test -p bleep-consensus chaos
 cargo test -p bleep-consensus bench
 ```
 
+## Known limitations (live PBFT)
+
+- **Fixed committee.** `LivePbftFinality` is built once at node start from the validator registry. Every node must start from the same validator set (`BLEEP_GENESIS_VALIDATORS`, see `docs/MULTINODE.md`). The producer refuses to produce if the registry later stops matching the boot-time committee, so validator-set changes at runtime are not supported.
+- **No view change and no finality timeout.** `wait_for_finality` waits until a prepare and commit quorum is authenticated. If fewer than `quorum = 2n/3 + 1` validators are reachable, the chain halts at that height. This preserves safety. It does not provide liveness, and it is not crash-fault tolerant below quorum.
+- **Why there is no naive timeout.** After a validator has voted on a proposal, proposing a different block at the same height would be equivocation. A safe timeout needs view numbers, vote retransmission, and a rule for re-proposing the same block. That is design work, not a patch.
+- **Producer holds the canonical commit lock while waiting.** A stalled proposal therefore also stalls other commit paths on that node.
+
 ---
 
 *Part of the [BLEEP Quantum Trust Network](https://github.com/BleepEcosystem/BLEEP-v1) · Protocol Version 5*
