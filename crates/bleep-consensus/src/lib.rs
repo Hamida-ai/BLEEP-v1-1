@@ -62,6 +62,9 @@ pub use block_producer::{
 };
 pub use pbft_engine::{LivePbftFinality, PbftMessage, PbftPhase, PBFT_MESSAGE_TYPE};
 
+pub mod genesis_validators;
+pub use genesis_validators::{GenesisValidator, GenesisValidatorSet};
+
 pub mod gossip_bridge;
 pub use gossip_bridge::{decode_finalized_block, encode_finalized_block, GossipBridge};
 
@@ -71,7 +74,8 @@ pub mod performance_bench;
 pub mod shard_coordinator;
 
 pub use chaos_engine::{
-    ChaosConfig, ChaosEngine, ChaosOutcome, ChaosScenario, ChaosSummary, ContinuousChaosHarness,
+    ChaosConfig, ChaosEngine, ChaosFidelity, ChaosOutcome, ChaosScenario, ChaosSummary,
+    ContinuousChaosHarness,
 };
 pub use performance_bench::{
     BenchmarkResult, PerformanceBenchmark, TpsWindow, BENCHMARK_DURATION_SECS, TARGET_TPS,
