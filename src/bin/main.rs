@@ -4,7 +4,7 @@
 //!
 //! ```text
 //! ┌─────────────────────────────────────────────────────────────────┐
-//! │  P2P Layer (libp2p)                                             │
+//! │  P2P Layer (Kyber-1024 + SPHINCS+ sessions)                     │
 //! │  Inbound txs → Mempool ──┐                                      │
 //! │  Block gossip ← P2PNode  │  MempoolBridge (500ms drain)         │
 //! └──────────────────────────┼──────────────────────────────────────┘
@@ -360,34 +360,91 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let validator_registry = Arc::new(Mutex::new(ValidatorRegistry::new()));
     let slashing_engine = Arc::new(Mutex::new(SlashingEngine::new()));
 
-    // Register the local node as the genesis validator with the real Kyber-1024 public key.
+    // Genesis validator set.
+    //
+    // Live PBFT builds its committee once, at start, from this registry. A node
+    // that registers only itself forms a committee of one and cannot agree on a
+    // block with any other node, so a multi-validator network must start every
+    // node from the SAME set. BLEEP_GENESIS_VALIDATORS points at that file
+    // (public keys only; see crates/bleep-consensus/src/genesis_validators.rs).
+    // When it is not set the node runs as a standalone single validator.
+    let genesis_set = match std::env::var("BLEEP_GENESIS_VALIDATORS") {
+        Ok(path) if !path.trim().is_empty() => {
+            let path = path.trim().to_string();
+            Some(
+                bleep_consensus::GenesisValidatorSet::load(std::path::Path::new(&path), &chain_id)
+                    .map_err(|e| format!("Genesis validator set {path}: {e}"))?,
+            )
+        }
+        _ => None,
+    };
+    // Stake the local validator is registered with; the block producer must be
+    // configured with exactly this value.
+    let mut local_stake: u64 = 1_000_000;
     {
         let mut reg = validator_registry.lock();
-        // Use the first 8 bytes of the SPHINCS+ PK as the validator ID
-        let validator_id = hex::encode(&sphincs_pk[..8]);
-        // Real Kyber-1024 PK bytes (1568 bytes) — wired from Step 1 keygen
-        let real_kyber_pk = kyber_pk.as_bytes().to_vec();
-        // S-06: pass the real SPHINCS+ public key bytes so SlashingEngine can
-        // cryptographically verify evidence before slashing this validator.
-        let signing_key_id = hex::encode(&sphincs_pk);
-        let genesis_validator = ValidatorIdentity::new(
-            validator_id.clone(),
-            real_kyber_pk,
-            signing_key_id,
-            1_000_000u128, // initial stake (matches BlockProducer config)
-            0,             // genesis epoch
-        );
-        match genesis_validator {
-            Ok(v) => {
-                reg.register_validator(v)
-                    .and_then(|_| reg.activate_validator(&validator_id))
-                    .map_err(|e| format!("Genesis validator activation failed: {e}"))?;
-                info!(
-                    "  ✅ Genesis validator registered: id={} (Kyber-1024 + SPHINCS+ PKs wired)",
-                    validator_id
-                );
+        if let Some(set) = &genesis_set {
+            let local_entry = set.find_by_signing_key(&sphincs_pk).ok_or_else(|| {
+                format!(
+                    "This node's signing key ({}…) is not in the genesis validator set. \
+                     Generate keys with bleep-validator-keygen and add the public keys to \
+                     the genesis file on every node.",
+                    hex::encode(&sphincs_pk[..8])
+                )
+            })?;
+            local_stake = local_entry.stake;
+            for entry in set.validators() {
+                let validator = ValidatorIdentity::new(
+                    entry.id.clone(),
+                    entry.kyber_public_key.clone(),
+                    hex::encode(&entry.signing_public_key),
+                    u128::from(entry.stake),
+                    0, // genesis epoch
+                )
+                .map_err(|e| format!("Genesis validator {} rejected: {e}", entry.id))?;
+                reg.register_validator(validator)
+                    .and_then(|_| reg.activate_validator(&entry.id))
+                    .map_err(|e| {
+                        format!("Genesis validator {} activation failed: {e}", entry.id)
+                    })?;
             }
-            Err(e) => warn!("  ⚠️  Genesis validator registration skipped: {}", e),
+            info!(
+                "  ✅ {} genesis validator(s) loaded from BLEEP_GENESIS_VALIDATORS (local id={})",
+                set.len(),
+                local_entry.id
+            );
+        } else {
+            warn!(
+                "  ⚠️  BLEEP_GENESIS_VALIDATORS is not set: running as a standalone single \
+                 validator. This node cannot reach consensus with other nodes."
+            );
+            // Register the local node as the genesis validator with the real Kyber-1024 public key.
+            // Use the first 8 bytes of the SPHINCS+ PK as the validator ID
+            let validator_id = hex::encode(&sphincs_pk[..8]);
+            // Real Kyber-1024 PK bytes (1568 bytes) — wired from Step 1 keygen
+            let real_kyber_pk = kyber_pk.as_bytes().to_vec();
+            // S-06: pass the real SPHINCS+ public key bytes so SlashingEngine can
+            // cryptographically verify evidence before slashing this validator.
+            let signing_key_id = hex::encode(&sphincs_pk);
+            let genesis_validator = ValidatorIdentity::new(
+                validator_id.clone(),
+                real_kyber_pk,
+                signing_key_id,
+                u128::from(local_stake), // initial stake (matches BlockProducer config)
+                0,                       // genesis epoch
+            );
+            match genesis_validator {
+                Ok(v) => {
+                    reg.register_validator(v)
+                        .and_then(|_| reg.activate_validator(&validator_id))
+                        .map_err(|e| format!("Genesis validator activation failed: {e}"))?;
+                    info!(
+                        "  ✅ Genesis validator registered: id={} (Kyber-1024 + SPHINCS+ PKs wired)",
+                        validator_id
+                    );
+                }
+                Err(e) => warn!("  ⚠️  Genesis validator registration skipped: {}", e),
+            }
         }
     }
 
@@ -577,10 +634,9 @@ async fn run() -> Result<(), Box<dyn Error>> {
     info!("⚖  [14/16] Wiring BlockProducer and task Scheduler…");
 
     // Build BlockProducer — proper (sk, pk) keypair, VM execution per-tx
-    // GossipBridge subscribes to block_tx and handles P2P broadcast externally
     let (mut block_producer, block_rx) = BlockProducer::new_with_sig_availability(
         hex::encode(&sphincs_pk[..8]), // validator_id (first 8 bytes of SPHINCS+ PK)
-        1_000_000u64,                  // stake weight
+        local_stake,                   // stake weight (must equal the registered stake)
         Arc::clone(&tx_pool),
         Arc::clone(&blockchain),
         Arc::clone(&state),
@@ -596,8 +652,6 @@ async fn run() -> Result<(), Box<dyn Error>> {
     block_producer.set_canonical_commit_lock(Arc::clone(&canonical_commit_lock));
     let block_producer = Arc::new(block_producer);
 
-    // Subscribe a second receiver for GossipBridge BEFORE the producer starts
-    let block_rx_gossip = block_producer.subscribe();
     let mut block_rx_sched = block_rx;
 
     // Build scheduler
@@ -734,11 +788,11 @@ async fn run() -> Result<(), Box<dyn Error>> {
         BlockProducer::run_arc(producer_for_task).await;
     });
 
-    // GossipBridge: fan out FinalizedBlock events to connected P2P peers
-    let gossip_bridge = bleep_consensus::GossipBridge::new(Arc::clone(&p2p_node));
-    let gossip_handle = tokio::spawn(async move {
-        gossip_bridge.run(block_rx_gossip).await;
-    });
+    // The block producer broadcasts the full, signed block itself, after the
+    // PBFT commit quorum (block_producer.rs). GossipBridge is intentionally NOT
+    // started: it sends a 52-byte summary (height, epoch, state root, tx count,
+    // hash) with no transactions or signature on the same MessageType::Block
+    // channel, which peers cannot decode as a block and log as "Bad block payload".
 
     // ── Inbound block handler ────────────────────────────────────────────────
     // Listens for gossip blocks from peers, validates them, and inserts
@@ -1179,7 +1233,6 @@ async fn run() -> Result<(), Box<dyn Error>> {
     // Abort background tasks
     producer_handle.abort();
     relay_handle.abort();
-    gossip_handle.abort();
     bridge_handle.abort();
     interval_handle.abort();
     block_sched_handle.abort();
