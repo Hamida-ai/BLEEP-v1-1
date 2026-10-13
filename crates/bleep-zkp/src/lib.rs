@@ -15,11 +15,15 @@ pub mod stark_proofs;
 
 pub mod batch_sig_prover;
 pub mod extended_air;
+pub mod state_update;
 
 pub use batch_sig_prover::{
     compute_commitment_parallel, BatchProveResult, BatchProverError, ParallelBatchSigProver,
 };
-pub use extended_air::{bleep_proof_options, ExtendedBlockPublicInputs, ExtendedBlockValidityAir};
+pub use extended_air::{
+    bleep_proof_options, epoch_id_for_height, ExtendedBlockPublicInputs, ExtendedBlockValidityAir,
+    BLOCKS_PER_EPOCH,
+};
 
 /// Magic prefix written before extended STARK proof bytes in block.zk_proof.
 pub const EXTENDED_STARK_MAGIC: &[u8] = b"EXTSTARK1";
