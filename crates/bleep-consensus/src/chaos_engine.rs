@@ -1,9 +1,19 @@
 //! bleep-consensus/src/chaos_engine.rs
-//! Chaos Testing Engine
+//! Chaos scenario model
 //!
-//! Simulates adversarial conditions: validator crashes, network partitions,
-//! long-range reorg attempts, and Byzantine double-sign attacks under load.
-//! All scenarios run in-process against a live ConsensusOrchestrator instance.
+//! This module is an *analytical model*, not a live adversarial test.
+//!
+//! * `Analytical` scenarios (validator crash, network partition, load) evaluate
+//!   quorum arithmetic and a block-capacity formula over plain integers. They
+//!   do not start, crash, partition, or load any node, and no transaction is
+//!   sent.
+//! * `NotExercised` scenarios (long-range reorg, double-sign, transaction
+//!   replay, eclipse, invalid-block flood) have no code path that attacks a
+//!   node. Their text is the *documented expectation* and is reported as not
+//!   verified; they never count as passed.
+//!
+//! Nothing here measures throughput or proves resilience. Evidence for either
+//! has to come from running real nodes (see docs/MULTINODE.md).
 
 use std::time::Instant;
 
@@ -29,6 +39,34 @@ pub enum ChaosScenario {
     LoadStress { tps: u32, duration_secs: u64 },
 }
 
+/// How much of a scenario's result is backed by executed code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChaosFidelity {
+    /// Result comes from arithmetic over the scenario parameters. No node,
+    /// network, or consensus engine is exercised.
+    Analytical,
+    /// No code path in this engine runs the scenario. The outcome text is a
+    /// documented expectation only.
+    NotExercised,
+}
+
+impl ChaosScenario {
+    /// What backs this scenario's outcome. No scenario in this engine drives a
+    /// running node, so none is reported as live.
+    pub fn fidelity(&self) -> ChaosFidelity {
+        match self {
+            ChaosScenario::ValidatorCrash { .. }
+            | ChaosScenario::NetworkPartition { .. }
+            | ChaosScenario::LoadStress { .. } => ChaosFidelity::Analytical,
+            ChaosScenario::LongRangeReorg { .. }
+            | ChaosScenario::DoubleSign { .. }
+            | ChaosScenario::TxReplay { .. }
+            | ChaosScenario::EclipseAttack { .. }
+            | ChaosScenario::InvalidBlockFlood { .. } => ChaosFidelity::NotExercised,
+        }
+    }
+}
+
 // ── Outcome ───────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -45,6 +83,11 @@ pub struct ChaosOutcome {
 }
 
 impl ChaosOutcome {
+    /// What backs this outcome (see [`ChaosFidelity`]).
+    pub fn fidelity(&self) -> ChaosFidelity {
+        self.scenario.fidelity()
+    }
+
     fn pass(
         scenario: ChaosScenario,
         start: Instant,
@@ -132,7 +175,9 @@ impl ChaosEngine {
     }
 
     /// Run all chaos scenarios in order.
-    /// Returns true iff every scenario passed.
+    /// Returns true iff every scenario passed. Scenarios that are
+    /// `NotExercised` never count as passed, so this is `false` for the default
+    /// suite until those scenarios are implemented against a running node.
     pub fn run_full_suite(&mut self, initial_height: u64) -> bool {
         let scenarios = self.build_scenario_list();
         let mut all_pass = true;
@@ -177,21 +222,48 @@ impl ChaosEngine {
             },
             ChaosScenario::InvalidBlockFlood { count: 1_000 },
             ChaosScenario::LoadStress {
+                tps: 500,
+                duration_secs: 60,
+            },
+            ChaosScenario::LoadStress {
                 tps: 1_000,
                 duration_secs: 60,
             },
             ChaosScenario::LoadStress {
-                tps: 5_000,
-                duration_secs: 60,
-            },
-            ChaosScenario::LoadStress {
-                tps: 10_000,
+                tps: 1_300,
                 duration_secs: 60,
             },
         ]
     }
 
     fn run_scenario(&mut self, scenario: ChaosScenario, height: u64) -> ChaosOutcome {
+        let fidelity = scenario.fidelity();
+        let mut outcome = self.run_scenario_model(scenario, height);
+        // No scenario here checks the invariants the constructors list, so they
+        // must not be reported as held.
+        let would_check = outcome.invariants_held.join("; ");
+        outcome.invariants_held.clear();
+        match fidelity {
+            ChaosFidelity::Analytical => {
+                outcome.notes = format!("MODEL ONLY, no node exercised: {}", outcome.notes);
+            }
+            ChaosFidelity::NotExercised => {
+                outcome.passed = false;
+                outcome.final_consensus = false;
+                outcome.violations.push(
+                    "not exercised: no code path in this engine runs this scenario against a node"
+                        .into(),
+                );
+                outcome.notes = format!(
+                    "DOCUMENTED EXPECTATION, NOT VERIFIED: {} (invariants a real test would need to check: {})",
+                    outcome.notes, would_check
+                );
+            }
+        }
+        outcome
+    }
+
+    fn run_scenario_model(&mut self, scenario: ChaosScenario, height: u64) -> ChaosOutcome {
         let start = Instant::now();
         match scenario {
             ChaosScenario::ValidatorCrash { count } => {
@@ -285,25 +357,37 @@ impl ChaosEngine {
                     &format!("{} invalid blocks: all rejected at SPHINCS+ signature gate before state application; no chain disruption; rate-limit triggered after 100 rejected blocks from same peer", count))
             }
             ChaosScenario::LoadStress { tps, duration_secs } => {
+                // Capacity arithmetic only. No transaction is sent and no
+                // throughput is measured.
+                const MAX_TXS_PER_BLOCK: u64 = 4096;
+                const BLOCK_TIME_SECS: u64 = 3;
+                let ceiling_tps = MAX_TXS_PER_BLOCK / BLOCK_TIME_SECS;
                 let target_tps = tps as u64;
-                let expected_blocks = duration_secs / 3; // 3s block time
-                let txs_per_block = (target_tps * 3).min(4096);
-                let effective_tps = txs_per_block / 3;
-                let met = effective_tps >= target_tps || txs_per_block == 4096;
-                if met {
-                    ChaosOutcome::pass(ChaosScenario::LoadStress { tps, duration_secs }, start, height, height + expected_blocks,
-                        &format!("{} TPS for {}s: {} tx/block × {} blocks = {} total txs; block utilisation {}%; all invariants held",
-                            tps, duration_secs, txs_per_block, expected_blocks,
-                            txs_per_block * expected_blocks,
-                            (txs_per_block * 100) / 4096))
+                let expected_blocks = duration_secs / BLOCK_TIME_SECS;
+                let txs_per_block = (target_tps * BLOCK_TIME_SECS).min(MAX_TXS_PER_BLOCK);
+                let effective_tps = txs_per_block / BLOCK_TIME_SECS;
+                if effective_tps >= target_tps {
+                    ChaosOutcome::pass(
+                        ChaosScenario::LoadStress { tps, duration_secs },
+                        start,
+                        height,
+                        height + expected_blocks,
+                        &format!(
+                            "{} TPS target is within the block-capacity ceiling of {} TPS \
+                             ({} tx/block over {}s blocks); capacity arithmetic only, no \
+                             transactions were sent",
+                            tps, ceiling_tps, txs_per_block, BLOCK_TIME_SECS
+                        ),
+                    )
                 } else {
                     ChaosOutcome::fail(
                         ChaosScenario::LoadStress { tps, duration_secs },
                         start,
                         height,
                         &format!(
-                            "TPS target {} not reached (effective: {})",
-                            tps, effective_tps
+                            "TPS target {} exceeds the block-capacity ceiling of {} TPS \
+                             ({} tx/block over {}s blocks)",
+                            tps, ceiling_tps, MAX_TXS_PER_BLOCK, BLOCK_TIME_SECS
                         ),
                     )
                 }
@@ -317,16 +401,28 @@ impl ChaosEngine {
 
     pub fn summary(&self) -> ChaosSummary {
         let total = self.outcomes.len();
-        let passed = self.outcomes.iter().filter(|o| o.passed).count();
+        let not_exercised = self
+            .outcomes
+            .iter()
+            .filter(|o| o.fidelity() == ChaosFidelity::NotExercised)
+            .count();
+        let modelled = total - not_exercised;
+        let passed = self
+            .outcomes
+            .iter()
+            .filter(|o| o.fidelity() == ChaosFidelity::Analytical && o.passed)
+            .count();
         ChaosSummary {
             total,
+            modelled,
+            not_exercised,
             passed,
-            failed: total - passed,
-            all_passed: passed == total,
-            pass_rate_pct: if total == 0 {
+            failed: modelled - passed,
+            all_passed: not_exercised == 0 && passed == modelled,
+            pass_rate_pct: if modelled == 0 {
                 0.0
             } else {
-                (passed as f64 / total as f64) * 100.0
+                (passed as f64 / modelled as f64) * 100.0
             },
         }
     }
@@ -334,14 +430,26 @@ impl ChaosEngine {
 
 #[derive(Debug, Clone)]
 pub struct ChaosSummary {
+    /// Every scenario in the run.
     pub total: usize,
+    /// Scenarios with an analytical model (see [`ChaosFidelity::Analytical`]).
+    pub modelled: usize,
+    /// Scenarios with no executed code path; never counted as passed.
+    pub not_exercised: usize,
+    /// Modelled scenarios whose model assertion held.
     pub passed: usize,
+    /// Modelled scenarios whose model assertion failed.
     pub failed: usize,
+    /// True only if nothing was left unexercised and every model held.
     pub all_passed: bool,
+    /// `passed / modelled`; excludes `not_exercised` scenarios.
     pub pass_rate_pct: f64,
 }
 
-// ── 72-hour continuous chaos harness ─────────────────────────────────────────
+// ── Continuous harness (bookkeeping only) ────────────────────────────────────
+//
+// `tick` re-evaluates the in-memory model instantly. It does not run for
+// `target_hours`, does not start nodes, and is not a soak test.
 
 pub struct ContinuousChaosHarness {
     engine: ChaosEngine,
@@ -407,7 +515,7 @@ mod tests {
     }
 
     #[test]
-    fn double_sign_always_detected() {
+    fn double_sign_is_reported_as_not_exercised() {
         let mut engine = ChaosEngine::new(7);
         let outcome = engine.run_scenario(
             ChaosScenario::DoubleSign {
@@ -415,13 +523,18 @@ mod tests {
             },
             200,
         );
-        assert!(outcome.passed);
+        // No code path attacks a node, so this must not be reported as passed.
+        assert!(!outcome.passed);
+        assert_eq!(outcome.fidelity(), ChaosFidelity::NotExercised);
+        assert!(outcome.notes.contains("NOT VERIFIED"));
         assert!(outcome.notes.contains("33%"));
-        assert!(outcome.invariants_held.iter().any(|i| i.contains("I-CON1")));
+        assert!(outcome.notes.contains("I-CON1"));
+        assert!(outcome.invariants_held.is_empty());
+        assert!(!outcome.violations.is_empty());
     }
 
     #[test]
-    fn tx_replay_rejected() {
+    fn tx_replay_is_reported_as_not_exercised() {
         let mut engine = ChaosEngine::new(7);
         let outcome = engine.run_scenario(
             ChaosScenario::TxReplay {
@@ -429,20 +542,23 @@ mod tests {
             },
             300,
         );
-        assert!(outcome.passed);
+        assert!(!outcome.passed);
+        assert_eq!(outcome.fidelity(), ChaosFidelity::NotExercised);
         assert!(outcome.notes.contains("I-S5"));
     }
 
     #[test]
-    fn long_range_reorg_beyond_finality_rejected() {
+    fn long_range_reorg_is_reported_as_not_exercised() {
         let mut engine = ChaosEngine::new(7);
         let outcome = engine.run_scenario(ChaosScenario::LongRangeReorg { fork_depth: 100 }, 500);
-        assert!(outcome.passed);
+        assert!(!outcome.passed);
+        assert_eq!(outcome.fidelity(), ChaosFidelity::NotExercised);
         assert!(outcome.notes.contains("I-CON3"));
     }
 
     #[test]
-    fn load_stress_10k_tps_passes_with_4096_cap() {
+    fn load_stress_above_block_capacity_ceiling_fails() {
+        // 4096 tx per 3s block is a ceiling of 1365 TPS; 10,000 TPS cannot be met.
         let mut engine = ChaosEngine::new(7);
         let outcome = engine.run_scenario(
             ChaosScenario::LoadStress {
@@ -452,22 +568,54 @@ mod tests {
             1000,
         );
         assert!(
-            outcome.passed,
-            "10K TPS should pass at block-cap saturation"
+            !outcome.passed,
+            "10,000 TPS exceeds the block-capacity ceiling"
         );
+        assert!(outcome.violations.iter().any(|v| v.contains("1365")));
+    }
+
+    #[test]
+    fn load_stress_within_ceiling_is_labelled_arithmetic_only() {
+        let mut engine = ChaosEngine::new(7);
+        let outcome = engine.run_scenario(
+            ChaosScenario::LoadStress {
+                tps: 1_000,
+                duration_secs: 60,
+            },
+            1000,
+        );
+        assert!(outcome.passed);
+        assert_eq!(outcome.fidelity(), ChaosFidelity::Analytical);
+        assert!(outcome.notes.contains("MODEL ONLY"));
+        assert!(outcome.notes.contains("no transactions were sent"));
+        assert!(outcome.invariants_held.is_empty());
     }
 
     #[test]
     fn full_chaos_suite_7_validators() {
         let mut engine = ChaosEngine::new(7);
-        // Most scenarios should pass; partition 5/2 with liveness-only failure is expected
-        let _passed = engine.run_full_suite(5000);
+        let all_passed = engine.run_full_suite(5000);
         let summary = engine.summary();
-        assert!(summary.total > 0);
-        assert!(
-            summary.pass_rate_pct >= 80.0,
-            "at least 80% of scenarios must pass"
-        );
+        assert_eq!(summary.total, 14);
+        assert_eq!(summary.modelled, 7);
+        assert_eq!(summary.not_exercised, 7);
+        // A 4/3 partition leaves no 5-of-7 quorum, so one model assertion fails.
+        assert_eq!(summary.passed, 6);
+        assert_eq!(summary.failed, 1);
+        // Unexercised scenarios must prevent a clean bill of health.
+        assert!(!summary.all_passed);
+        assert_eq!(all_passed, summary.all_passed);
+        assert!(summary.pass_rate_pct >= 80.0);
+    }
+
+    #[test]
+    fn default_suite_contains_no_unreachable_load_target() {
+        let engine = ChaosEngine::new(7);
+        for scenario in engine.build_scenario_list() {
+            if let ChaosScenario::LoadStress { tps, .. } = scenario {
+                assert!(tps <= 1365, "{tps} TPS is above the capacity ceiling");
+            }
+        }
     }
 
     #[test]
