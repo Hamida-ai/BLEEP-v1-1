@@ -42,7 +42,7 @@ edition = "2021"
 authors = ["Muhammad Attahir"]
 license = "MIT OR Apache-2.0"
 description = "BLEEP Blockchain - AI-powered, quantum-secure, cross-chain decentralized ecosystem."
-repository = "https://github.com/bleep-project/bleep"
+repository = "https://github.com/BleepEcosystem/BLEEP-v1"
 
 [[bin]]
 name = "bleep_admin"
@@ -103,7 +103,6 @@ aes-gcm = "0.10.3"
 hkdf = "0.12.4"
 halo2_proofs = "0.3.0"
 ark-r1cs-std = "0.6.0"
-libp2p = "0.56.0"
 rocksdb = { version = "0.21.0", features = ["multi-threaded-cf"] }
 dashmap = "5.5.3"
 lru = "0.18.0"
